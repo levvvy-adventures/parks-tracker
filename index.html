@@ -709,7 +709,8 @@
       html += '<option value="none"' + (listVisitedFilter==='none'?' selected':'') + '>Not visited</option>';
       html += '</select>';
       // Sub-category chips
-      const cats = categoriesInGroup(currentTab);
+      const cats = categoriesInGroup(currentTab).sort((a, b) =>
+        (DATA.categories[a].label || a).localeCompare(DATA.categories[b].label || b));
       if (cats.length > 1) {
         html += '<div class="cat-chips" style="width:100%;margin-top:6px;margin-bottom:0;">';
         html += chip('all', 'All', npsSubFilter === null);
@@ -1141,7 +1142,8 @@
     let html = '';
     html += '<div class="map-filter-actions"><button id="filterAllOn">Show all</button><button id="filterAllOff">Hide all</button><button id="filterDefault">Default</button></div>';
     groups.forEach(g => {
-      const cats = categoriesInGroup(g);
+      const cats = categoriesInGroup(g).sort((a, b) =>
+        (DATA.categories[a].label || a).localeCompare(DATA.categories[b].label || b));
       if (!cats.length) return;
       html += '<h4>' + escHtml((DATA.groupLabels || {})[g] || g) + '</h4>';
       cats.forEach(c => {
