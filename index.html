@@ -201,6 +201,62 @@
   .topsite-notes { display: none; }
   body.admin .topsite-notes { display: block; flex: 1; max-width: 200px; padding: 4px 6px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--card); color: var(--ink); font-family: inherit; }
 
+  /* Add new place UI */
+  .add-place-section {
+    background: var(--accent-soft);
+    border: 1px dashed var(--accent);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    display: none;
+  }
+  body.admin .add-place-section { display: block; }
+  .add-place-section.expanded { background: var(--card); border-style: solid; }
+  .add-place-section .toggle-btn {
+    background: var(--accent); color: #fff; border: none;
+    padding: 8px 14px; border-radius: 6px; font-size: 14px;
+    cursor: pointer; font-weight: 500;
+  }
+  .add-place-section .toggle-btn.secondary {
+    background: transparent; color: var(--accent); border: 1px solid var(--accent);
+  }
+  .add-place-form { display: none; margin-top: 10px; }
+  .add-place-section.expanded .add-place-form { display: block; }
+  .add-place-form .form-row { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; align-items: center; }
+  .add-place-form input, .add-place-form select {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--card);
+    color: var(--ink);
+    font-family: inherit;
+  }
+  .add-place-form input.flex { flex: 1 1 200px; min-width: 140px; }
+  .add-place-form input.narrow { width: 120px; }
+  .add-place-form select { flex: 1 1 200px; }
+  .add-place-form button {
+    padding: 7px 12px; border-radius: 6px; font-size: 13px;
+    cursor: pointer; border: 1px solid var(--border);
+    background: var(--card); color: var(--ink);
+  }
+  .add-place-form button.primary {
+    background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 500;
+  }
+  .add-place-form .lookup-msg {
+    font-size: 12px; color: var(--muted);
+    margin-top: 6px; font-style: italic;
+  }
+  .add-place-form .lookup-msg.success { color: var(--accent); font-style: normal; }
+  .add-place-form .lookup-msg.error { color: var(--warm); font-style: normal; }
+  .add-place-form .help {
+    font-size: 11px; color: var(--muted);
+    margin-top: 6px;
+  }
+  .add-place-form .help code {
+    background: var(--accent-soft); padding: 1px 4px; border-radius: 3px; font-size: 10px;
+  }
+
   /* Photo support */
   .trip-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
   .trip-photo-wrap { position: relative; display: inline-block; }
@@ -424,6 +480,9 @@
   let listSearch = '';
   let listVisitedFilter = 'all';
   let npsSubFilter = null;
+  let addFormOpen = false;
+  let addFormMessage = '';
+  let addFormMessageType = '';
   const isAdmin = new URLSearchParams(location.search).get('admin') === '1';
   if (isAdmin) document.body.classList.add('admin');
 
@@ -527,6 +586,17 @@
     renderTabs();
     renderStats();
     renderToolbar();
+    renderContent();
+  }
+
+  // Re-render only stats + content (not tabs/toolbar). Used for search/filter
+  // changes so the search input keeps focus while the user types.
+  function renderListOnly() {
+    renderStats();
+    renderContent();
+  }
+
+  function renderContent() {
     if (currentTab === 'map') renderMap();
     else if (currentTab === 'international') renderInternational();
     else renderListGroup();
@@ -619,9 +689,9 @@
       document.getElementById('toolbar').innerHTML = html;
     }
     const sb = document.getElementById('searchBox');
-    if (sb) sb.addEventListener('input', e => { listSearch = e.target.value; render(); });
+    if (sb) sb.addEventListener('input', e => { listSearch = e.target.value; renderListOnly(); });
     const vf = document.getElementById('visitedFilter');
-    if (vf) vf.addEventListener('change', e => { listVisitedFilter = e.target.value; render(); });
+    if (vf) vf.addEventListener('change', e => { listVisitedFilter = e.target.value; renderListOnly(); });
     document.querySelectorAll('.cat-chip').forEach(el => {
       el.addEventListener('click', () => {
         const v = el.dataset.cat;
@@ -656,6 +726,60 @@
     });
   }
 
+  function renderAddPlaceUI() {
+    if (!isAdmin) return '';
+    const groupCats = categoriesInGroup(currentTab);
+    if (!groupCats.length) return '';
+    const defaultCat = npsSubFilter && groupCats.indexOf(npsSubFilter) !== -1 ? npsSubFilter : groupCats[0];
+    let html = '<div class="add-place-section ' + (addFormOpen ? 'expanded' : '') + '">';
+    if (!addFormOpen) {
+      html += '<button class="toggle-btn" id="addPlaceToggle">+ Add a new place</button>';
+      html += '<span style="margin-left:10px;font-size:12px;color:var(--muted);">Add a place that\'s missing from this list.</span>';
+    } else {
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">';
+      html += '<strong>Add a new place</strong>';
+      html += '<button class="toggle-btn secondary" id="addPlaceCancel">Cancel</button>';
+      html += '</div>';
+      html += '<div class="add-place-form">';
+      // Category
+      if (groupCats.length > 1) {
+        html += '<div class="form-row">';
+        html += '<label style="font-size:12px;color:var(--muted);min-width:80px;">Category:</label>';
+        html += '<select id="addPlaceCategory">';
+        groupCats.forEach(c => {
+          const meta = DATA.categories[c];
+          html += '<option value="' + escHtml(c) + '"' + (c === defaultCat ? ' selected' : '') + '>' + escHtml(meta.label) + '</option>';
+        });
+        html += '</select></div>';
+      } else {
+        html += '<input type="hidden" id="addPlaceCategory" value="' + escHtml(defaultCat) + '" />';
+        html += '<div style="font-size:12px;color:var(--muted);">Adding to: <strong>' + escHtml(DATA.categories[defaultCat].label) + '</strong></div>';
+      }
+      // Name and state
+      html += '<div class="form-row">';
+      html += '<input type="text" id="addPlaceName" class="flex" placeholder="Place name (e.g. Cedar Breaks)" />';
+      html += '<input type="text" id="addPlaceState" class="narrow" placeholder="State / Region" />';
+      html += '</div>';
+      // Lat/lng + lookup
+      html += '<div class="form-row">';
+      html += '<input type="text" id="addPlaceLat" class="narrow" placeholder="Latitude" />';
+      html += '<input type="text" id="addPlaceLng" class="narrow" placeholder="Longitude" />';
+      html += '<button id="lookupCoords">Look up coordinates</button>';
+      html += '</div>';
+      // Message
+      html += '<div class="lookup-msg ' + escHtml(addFormMessageType) + '">' + (addFormMessage ? escHtml(addFormMessage) : '') + '</div>';
+      // Help
+      html += '<div class="help">Tip: type a name and click <em>Look up coordinates</em> to auto-fill. Or right-click a spot in Google Maps and paste the lat,lng (e.g. <code>37.63, -112.84</code>) into the Latitude box.</div>';
+      // Submit
+      html += '<div class="form-row" style="margin-top:10px;">';
+      html += '<button class="primary" id="addPlaceSubmit">Add place</button>';
+      html += '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+    return html;
+  }
+
   function renderListGroup() {
     const cats = categoriesInGroup(currentTab);
     const visibleCats = npsSubFilter ? [npsSubFilter] : cats;
@@ -664,9 +788,9 @@
       placesMatchingFilter(catKey).forEach(p => entries.push({ catKey, place: p }));
     });
     entries.sort((a, b) => a.place.name.localeCompare(b.place.name));
-    let html = '';
+    let html = renderAddPlaceUI();
     if (entries.length === 0) {
-      html = '<div style="background:var(--card);border:1px solid var(--border);padding:20px;border-radius:10px;text-align:center;color:var(--muted);">No places match these filters.</div>';
+      html += '<div style="background:var(--card);border:1px solid var(--border);padding:20px;border-radius:10px;text-align:center;color:var(--muted);">No places match these filters.</div>';
     } else {
       html += '<div class="park-list">';
       entries.forEach(({catKey, place}) => {
@@ -676,6 +800,7 @@
     }
     document.getElementById('content').innerHTML = html;
     bindCardHandlers();
+    bindAddPlaceHandlers();
   }
 
   function renderPlaceCard(catKey, place) {
@@ -766,6 +891,110 @@
 
   function findPlace(catKey, pname) {
     return (DATA.places[catKey] || []).find(p => p.name === pname);
+  }
+
+  function bindAddPlaceHandlers() {
+    if (!isAdmin) return;
+    const toggleBtn = document.getElementById('addPlaceToggle');
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', () => {
+        addFormOpen = true;
+        addFormMessage = '';
+        addFormMessageType = '';
+        render();
+      });
+    }
+    const cancelBtn = document.getElementById('addPlaceCancel');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        addFormOpen = false;
+        addFormMessage = '';
+        addFormMessageType = '';
+        render();
+      });
+    }
+    const lookupBtn = document.getElementById('lookupCoords');
+    if (lookupBtn) {
+      lookupBtn.addEventListener('click', async () => {
+        const name = (document.getElementById('addPlaceName').value || '').trim();
+        const stateField = (document.getElementById('addPlaceState').value || '').trim();
+        if (!name) {
+          setAddMsg('Enter a name first, then look up.', 'error');
+          return;
+        }
+        const query = name + (stateField ? ', ' + stateField : '');
+        setAddMsg('Looking up...', '');
+        try {
+          const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&q=' + encodeURIComponent(query) + '&limit=1', {
+            headers: { 'Accept': 'application/json' }
+          });
+          const results = await res.json();
+          if (!Array.isArray(results) || results.length === 0) {
+            setAddMsg('No results. Try a different spelling, or paste lat,lng manually.', 'error');
+            return;
+          }
+          const r = results[0];
+          document.getElementById('addPlaceLat').value = parseFloat(r.lat).toFixed(4);
+          document.getElementById('addPlaceLng').value = parseFloat(r.lon).toFixed(4);
+          setAddMsg('Found: ' + (r.display_name || '').slice(0, 80), 'success');
+        } catch (err) {
+          setAddMsg('Lookup failed (' + err.message + '). Paste lat,lng manually.', 'error');
+        }
+      });
+    }
+    const submitBtn = document.getElementById('addPlaceSubmit');
+    if (submitBtn) {
+      submitBtn.addEventListener('click', () => {
+        const cat = document.getElementById('addPlaceCategory').value;
+        const name = (document.getElementById('addPlaceName').value || '').trim();
+        const stateField = (document.getElementById('addPlaceState').value || '').trim();
+        let latRaw = (document.getElementById('addPlaceLat').value || '').trim();
+        let lngRaw = (document.getElementById('addPlaceLng').value || '').trim();
+        // Allow pasting "lat, lng" into the lat box
+        if (latRaw.indexOf(',') !== -1 && !lngRaw) {
+          const parts = latRaw.split(',').map(s => s.trim());
+          if (parts.length === 2) { latRaw = parts[0]; lngRaw = parts[1]; }
+        }
+        if (!name) { setAddMsg('Name is required.', 'error'); return; }
+        if (!cat || !DATA.places[cat]) { setAddMsg('Invalid category.', 'error'); return; }
+        const lat = latRaw === '' ? null : parseFloat(latRaw);
+        const lng = lngRaw === '' ? null : parseFloat(lngRaw);
+        if ((latRaw && isNaN(lat)) || (lngRaw && isNaN(lng))) {
+          setAddMsg('Latitude and longitude must be numbers.', 'error');
+          return;
+        }
+        // Check duplicate
+        const existing = DATA.places[cat].find(p => p.name.toLowerCase() === name.toLowerCase());
+        if (existing) {
+          if (!confirm('A place named "' + name + '" already exists in ' + DATA.categories[cat].label + '. Add another anyway?')) {
+            return;
+          }
+        }
+        const newPlace = { name, trips: [] };
+        if (stateField) newPlace.state = stateField;
+        if (lat !== null) newPlace.lat = lat;
+        if (lng !== null) newPlace.lng = lng;
+        if (cat === 'countries') newPlace.topSites = [];
+        DATA.places[cat].push(newPlace);
+        addFormOpen = false;
+        addFormMessage = '';
+        addFormMessageType = '';
+        // Clear filters so the new place is visible
+        listSearch = '';
+        listVisitedFilter = 'all';
+        render();
+      });
+    }
+  }
+
+  function setAddMsg(text, type) {
+    addFormMessage = text;
+    addFormMessageType = type || '';
+    const el = document.querySelector('.add-place-form .lookup-msg');
+    if (el) {
+      el.textContent = text;
+      el.className = 'lookup-msg ' + (type || '');
+    }
   }
 
   function bindCardHandlers() {
