@@ -3,8 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Price Family Parks Tracker</title>
+<title>Price Family Travel Tracker</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 <style>
   :root {
     --bg: #f5f1e8;
@@ -15,7 +17,6 @@
     --accent-soft: #e6ede1;
     --border: #d8d0bc;
     --warm: #c97b3f;
-    --sky: #4a7a9d;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -28,19 +29,19 @@
   header {
     background: var(--accent);
     color: #fff;
-    padding: 24px 20px 20px;
+    padding: 22px 20px 18px;
     text-align: center;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
   }
-  header h1 { margin: 0 0 4px; font-size: 26px; font-weight: 700; letter-spacing: 0.3px; }
+  header h1 { margin: 0 0 4px; font-size: 24px; font-weight: 700; }
   header p { margin: 0; opacity: 0.85; font-size: 14px; }
-  .container { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 14px; }
 
   .tabs {
     display: flex;
     gap: 4px;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 16px;
+    margin-bottom: 14px;
     overflow-x: auto;
   }
   .tab {
@@ -58,45 +59,29 @@
 
   .stats {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
     gap: 10px;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
   }
   .stat-card {
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 12px 14px;
+    padding: 10px 12px;
     text-align: center;
   }
-  .stat-card .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
-  .stat-card .value { font-size: 22px; font-weight: 700; color: var(--accent); margin-top: 4px; }
+  .stat-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-card .value { font-size: 20px; font-weight: 700; color: var(--accent); margin-top: 2px; }
   .stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
-  .view-toggle {
-    display: flex;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-  .view-btn {
-    padding: 8px 14px;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    cursor: pointer;
-    font-size: 14px;
-    color: var(--ink);
-  }
-  .view-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
-
-  .filter-bar {
+  .toolbar {
     display: flex;
     gap: 8px;
     margin-bottom: 12px;
     flex-wrap: wrap;
     align-items: center;
   }
-  .filter-bar input, .filter-bar select {
+  .toolbar input, .toolbar select {
     padding: 8px 10px;
     border: 1px solid var(--border);
     border-radius: 8px;
@@ -104,7 +89,29 @@
     background: var(--card);
     color: var(--ink);
   }
-  .filter-bar input { flex: 1 1 200px; min-width: 160px; }
+  .toolbar input { flex: 1 1 200px; min-width: 160px; }
+  .view-btn, .filter-toggle {
+    padding: 8px 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .view-btn.active, .filter-toggle.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .cat-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .cat-chip {
+    padding: 5px 10px;
+    border-radius: 14px;
+    font-size: 12px;
+    cursor: pointer;
+    user-select: none;
+    border: 1px solid;
+    background: #fff;
+  }
+  .cat-chip .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
 
   .park-list { display: grid; gap: 10px; }
   .park-card {
@@ -112,195 +119,290 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 14px;
-    transition: box-shadow 0.15s;
   }
-  .park-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-  .park-card.visited-by-all { border-left: 4px solid var(--accent); }
-  .park-card.visited-some { border-left: 4px solid var(--warm); }
-  .park-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .park-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
   .park-name { font-size: 17px; font-weight: 600; }
-  .park-state { font-size: 13px; color: var(--muted); background: var(--accent-soft); padding: 2px 8px; border-radius: 6px; }
+  .park-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+  .park-tag, .park-state {
+    font-size: 11px; color: #fff; padding: 2px 8px; border-radius: 6px;
+    text-transform: none; font-weight: 500;
+  }
+  .park-state { background: var(--accent-soft); color: var(--muted); }
 
-  .visited-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .visited-summary { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
   .person-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 5px 10px;
-    border-radius: 16px;
-    font-size: 13px;
-    background: #eee;
-    color: var(--muted);
+    display: inline-flex; align-items: center; gap: 3px;
+    padding: 4px 9px;
+    border-radius: 14px;
+    font-size: 12px;
+    background: #eee; color: var(--muted);
     border: 1px solid var(--border);
-    cursor: default;
     user-select: none;
   }
-  .person-chip.checked {
-    background: var(--accent);
-    color: #fff;
-    border-color: var(--accent);
+  .person-chip.checked { background: var(--accent); color: #fff; border-color: var(--accent); }
+  body.admin .person-chip.editable { cursor: pointer; }
+  body.admin .person-chip.editable:hover { opacity: 0.85; }
+
+  .trips-list { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+  .trip-item {
+    background: var(--accent-soft);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-top: 6px;
+    font-size: 13px;
   }
-  body.admin .person-chip { cursor: pointer; }
-  body.admin .person-chip:hover { opacity: 0.85; }
+  .trip-line { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .trip-date { font-weight: 600; color: var(--ink); }
+  .trip-who { color: var(--muted); }
+  .trip-notes { color: var(--muted); font-style: italic; margin-top: 3px; font-size: 12px; }
+  .trip-remove {
+    margin-left: auto;
+    background: transparent;
+    border: none;
+    color: var(--warm);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 6px;
+    display: none;
+  }
+  body.admin .trip-remove { display: inline; }
 
-  .park-meta { font-size: 13px; color: var(--muted); margin-top: 8px; }
-  .park-meta strong { color: var(--ink); font-weight: 500; }
-  .park-meta .empty { font-style: italic; opacity: 0.7; }
+  .trip-editor { display: none; margin-top: 6px; }
+  body.admin .trip-editor { display: block; }
+  .trip-editor input, .trip-editor textarea {
+    width: 100%; padding: 6px 8px; margin-top: 4px;
+    border: 1px solid var(--border); border-radius: 6px; font-size: 13px;
+    font-family: inherit; background: var(--card); color: var(--ink);
+  }
+  .trip-editor textarea { min-height: 40px; resize: vertical; }
+  .trip-editor label { font-size: 11px; color: var(--muted); margin-top: 6px; display: block; }
+  .add-trip-btn {
+    margin-top: 6px; background: var(--accent); color: #fff; border: none;
+    padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500;
+  }
+  .add-trip-btn.secondary { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
 
-  .admin-edit { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
-  body.admin .admin-edit { display: block; }
-  .admin-edit input, .admin-edit textarea {
-    width: 100%;
+  .topsites-list { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); }
+  .topsite-row {
+    display: flex; gap: 8px; align-items: center;
+    padding: 5px 0;
+    font-size: 13px;
+  }
+  .topsite-checkbox {
+    width: 18px; height: 18px; border: 1.5px solid var(--border); border-radius: 4px;
+    display: inline-flex; align-items: center; justify-content: center;
+    flex-shrink: 0; user-select: none;
+  }
+  body.admin .topsite-checkbox { cursor: pointer; }
+  .topsite-checkbox.checked { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .topsite-name { flex: 1; }
+  .topsite-name .city { color: var(--muted); font-size: 11px; margin-left: 4px; }
+  .topsite-row.checked .topsite-name { text-decoration: line-through; color: var(--muted); }
+  .topsite-notes { display: none; }
+  body.admin .topsite-notes { display: block; flex: 1; max-width: 200px; padding: 4px 6px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--card); color: var(--ink); font-family: inherit; }
+
+  /* Photo support */
+  .trip-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .trip-photo-wrap { position: relative; display: inline-block; }
+  .trip-photo-thumb {
+    width: 84px; height: 84px;
+    border-radius: 6px;
+    object-fit: cover;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: #eee;
+    transition: transform 0.1s;
+    display: block;
+  }
+  .trip-photo-thumb:hover { transform: scale(1.04); }
+  .trip-photo-thumb.broken {
+    background: #f0e5d8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    padding: 4px;
+  }
+  .trip-photo-remove {
+    display: none;
+    position: absolute;
+    top: 2px; right: 2px;
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.75);
+    color: #fff;
+    font-size: 14px; font-weight: 700;
+    line-height: 18px; text-align: center;
+    cursor: pointer; border: none; padding: 0;
+  }
+  body.admin .trip-photo-remove { display: inline-block; }
+  .photo-add-row { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .photo-add-row input {
+    flex: 1 1 200px;
     padding: 6px 8px;
-    margin-top: 4px;
     border: 1px solid var(--border);
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 12px;
     font-family: inherit;
     background: var(--card);
     color: var(--ink);
   }
-  .admin-edit textarea { min-height: 50px; resize: vertical; }
-  .admin-edit label { font-size: 12px; color: var(--muted); margin-top: 6px; display: block; }
+  .photo-add-row button {
+    background: var(--accent); color: #fff; border: none;
+    padding: 6px 12px; border-radius: 6px;
+    font-size: 12px; cursor: pointer; font-weight: 500;
+  }
+
+  /* Lightbox */
+  .lightbox {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.93);
+    align-items: center; justify-content: center;
+    z-index: 99999; padding: 20px;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img {
+    max-width: 95vw;
+    max-height: 92vh;
+    border-radius: 4px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  .lightbox-close {
+    position: absolute;
+    top: 16px; right: 16px;
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: none;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    font-size: 22px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .lightbox-caption {
+    position: absolute;
+    bottom: 20px;
+    color: #fff;
+    font-size: 13px;
+    background: rgba(0,0,0,0.5);
+    padding: 6px 12px;
+    border-radius: 6px;
+  }
 
   #map { height: 600px; border-radius: 10px; border: 1px solid var(--border); }
+  .map-wrap { position: relative; }
+  .map-filter-panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .map-filter-panel h4 { margin: 6px 0 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .map-filter-panel label { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; margin: 3px 8px 3px 0; cursor: pointer; }
+  .map-filter-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .map-filter-actions button { font-size: 12px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); cursor: pointer; }
+
+  .leaflet-popup-content { margin: 10px 12px; min-width: 240px; max-width: 320px; }
+  .popup-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; color: var(--ink); }
+  .popup-state { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 
   .admin-bar {
     display: none;
-    position: sticky;
-    bottom: 12px;
+    position: sticky; bottom: 12px;
     margin: 16px 0 0;
-    background: var(--ink);
-    color: #fff;
+    background: var(--ink); color: #fff;
     padding: 10px 14px;
     border-radius: 10px;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 10px;
+    align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 10px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+    z-index: 500;
   }
   body.admin .admin-bar { display: flex; }
   .admin-bar button {
-    background: var(--warm);
-    color: #fff;
-    border: none;
-    padding: 8px 14px;
-    border-radius: 6px;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 14px;
+    background: var(--warm); color: #fff; border: none;
+    padding: 8px 14px; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;
   }
   .admin-bar button.secondary { background: transparent; border: 1px solid #fff; }
 
   .modal-backdrop {
-    display: none;
-    position: fixed; inset: 0;
+    display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.55);
     align-items: center; justify-content: center;
-    z-index: 9999;
-    padding: 20px;
+    z-index: 9999; padding: 20px;
   }
   .modal-backdrop.open { display: flex; }
   .modal {
-    background: var(--card);
-    border-radius: 12px;
-    padding: 18px;
-    max-width: 700px;
-    width: 100%;
-    max-height: 85vh;
-    overflow: auto;
+    background: var(--card); border-radius: 12px; padding: 18px;
+    max-width: 700px; width: 100%;
+    max-height: 85vh; overflow: auto;
   }
   .modal h3 { margin: 0 0 8px; }
   .modal textarea {
-    width: 100%;
-    min-height: 280px;
+    width: 100%; min-height: 280px;
     font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 12px;
-    padding: 10px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    font-size: 12px; padding: 10px;
+    border: 1px solid var(--border); border-radius: 8px;
   }
   .modal .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
   .modal button {
-    padding: 8px 14px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--card);
-    cursor: pointer;
-    font-size: 14px;
+    padding: 8px 14px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--card);
+    cursor: pointer; font-size: 14px;
   }
   .modal button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
 
   footer { text-align: center; color: var(--muted); font-size: 12px; padding: 24px 0 40px; }
-  footer a { color: var(--muted); text-decoration: underline; }
 
-  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin: 8px 0; }
-  .legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  @media (max-width: 600px) {
+    .park-head { flex-direction: column; align-items: flex-start; }
+    #map { height: 480px; }
+  }
 </style>
 </head>
 <body>
-
 <header>
-  <h1>Price Family Parks Tracker</h1>
-  <p>National Parks, National Monuments, and Utah State Parks</p>
+  <h1>Price Family Travel Tracker</h1>
+  <p>National Parks, State Parks, and Countries Visited</p>
 </header>
 
 <div class="container">
-
-  <div class="tabs">
-    <button class="tab active" data-tab="nationalParks">National Parks</button>
-    <button class="tab" data-tab="nationalMonuments">National Monuments</button>
-    <button class="tab" data-tab="utahStateParks">Utah State Parks</button>
-  </div>
-
+  <div class="tabs" id="tabs"></div>
   <div id="stats" class="stats"></div>
-
-  <div class="view-toggle">
-    <button class="view-btn active" data-view="list">List</button>
-    <button class="view-btn" data-view="map">Map</button>
-  </div>
-
-  <div class="filter-bar" id="filterBar">
-    <input type="text" id="searchBox" placeholder="Search parks..." />
-    <select id="visitedFilter">
-      <option value="all">All parks</option>
-      <option value="any">Visited by anyone</option>
-      <option value="all-fam">Visited by everyone</option>
-      <option value="none">Not visited yet</option>
-    </select>
-  </div>
-
-  <div id="listView" class="park-list"></div>
-
-  <div id="mapView" style="display:none;">
-    <div class="legend">
-      <span><span class="legend-dot" style="background:#4a6741;"></span>Visited by everyone</span>
-      <span><span class="legend-dot" style="background:#c97b3f;"></span>Visited by some</span>
-      <span><span class="legend-dot" style="background:#bbb;"></span>Not visited</span>
-    </div>
-    <div id="map"></div>
-  </div>
+  <div id="toolbar" class="toolbar"></div>
+  <div id="content"></div>
 
   <div class="admin-bar">
     <span>Admin mode is ON. Edits are local until you Export &amp; commit to GitHub.</span>
     <div>
       <button id="exportBtn">Export updated data</button>
-      <button class="secondary" id="exitAdminBtn">Exit admin mode</button>
+      <button class="secondary" id="exitAdminBtn">Exit admin</button>
     </div>
   </div>
 
   <footer>
-    <p>Tip: add <code>?admin=1</code> to the URL to edit. <a href="#" id="aboutLink">About this site</a></p>
+    <p>Tip: add <code>?admin=1</code> to the URL to edit.</p>
   </footer>
+</div>
+
+<div class="lightbox" id="lightbox">
+  <button class="lightbox-close" id="lightboxClose" aria-label="Close">&times;</button>
+  <img id="lightboxImg" src="" alt="" />
+  <div class="lightbox-caption" id="lightboxCaption"></div>
 </div>
 
 <div class="modal-backdrop" id="exportModal">
   <div class="modal">
     <h3>Updated data.json</h3>
     <p style="margin: 0 0 10px; font-size: 14px; color: var(--muted);">
-      Copy everything below, then go to your <strong>data.json</strong> file on GitHub, click the pencil icon to edit,
-      paste this in (replacing all existing content), and commit. The site updates within a minute.
+      Copy everything below, then go to your <strong>data.json</strong> file on GitHub, click the pencil to edit,
+      paste this in (replacing the entire file), and commit. The site updates within a minute.
     </p>
     <textarea id="exportText" readonly></textarea>
     <div class="actions">
@@ -310,255 +412,586 @@
   </div>
 </div>
 
-<div class="modal-backdrop" id="aboutModal">
-  <div class="modal">
-    <h3>About</h3>
-    <p>This is the Price family parks tracker, built for Levi, Lucy, Rockwell, and Asher.</p>
-    <p>The site reads from a single <code>data.json</code> file in this site's GitHub repository. To log new visits, the family admin opens the site with <code>?admin=1</code> at the end of the URL, makes changes, exports the new JSON, and pastes it into GitHub. All visitors see the latest data automatically.</p>
-    <div class="actions">
-      <button class="primary" id="closeAboutBtn">Got it</button>
-    </div>
-  </div>
-</div>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
+(function(){
   let DATA = null;
-  let currentTab = 'nationalParks';
+  let currentTab = 'nps';
   let currentView = 'list';
-  let mapInstance = null;
-  let markerLayer = null;
+  let mapInstance = null, clusterLayer = null;
+  let mapCategoryFilters = {};
+  let listSearch = '';
+  let listVisitedFilter = 'all';
+  let npsSubFilter = null;
   const isAdmin = new URLSearchParams(location.search).get('admin') === '1';
-
   if (isAdmin) document.body.classList.add('admin');
 
-  const TAB_LABELS = {
-    nationalParks: 'National Parks',
-    nationalMonuments: 'National Monuments',
-    utahStateParks: 'Utah State Parks'
-  };
-
-  // Load data.json. Try to bust cache by appending timestamp.
   fetch('data.json?t=' + Date.now())
     .then(r => r.json())
-    .then(d => { DATA = d; render(); })
+    .then(d => { DATA = migrate(d); initMapFilters(); render(); })
     .catch(err => {
       document.querySelector('.container').innerHTML =
         '<div style="background:#fff3cd;padding:16px;border-radius:8px;border:1px solid #ffeaa7;">' +
         '<strong>Could not load data.json.</strong><br>' +
-        'If you are previewing this file locally by double-clicking it, browsers block local file loads. ' +
+        'If you are previewing this file locally, browsers block local file loads. ' +
         'Either run <code>python3 -m http.server</code> in this folder, or publish to GitHub Pages.<br>' +
         '<small>' + err.message + '</small></div>';
     });
 
+  // ----- Schema migration -----
+  function migrate(data) {
+    if (!data.places && data.nationalParks) {
+      // Even older flat schema -> nest under places
+      const oldKeys = ['nationalParks','nationalMonuments','nationalRecreationAreas','utahStateParks'];
+      const newPlaces = {};
+      oldKeys.forEach(k => { if (data[k]) newPlaces[k] = data[k]; });
+      data.places = newPlaces;
+      // Add minimal categories meta if missing
+      if (!data.categories) {
+        data.categories = {};
+        oldKeys.forEach(k => {
+          data.categories[k] = { label: k, color: '#4a6741', group: k.startsWith('utah') ? 'state' : 'nps', defaultVisible: true };
+        });
+        data.groupOrder = ['nps','state','international'];
+        data.groupLabels = { nps: 'NPS', state: 'State Parks', international: 'International' };
+      }
+    }
+    // Migrate per-place visited/dates/notes -> trips
+    Object.keys(data.places || {}).forEach(cat => {
+      (data.places[cat] || []).forEach(p => {
+        if (!Array.isArray(p.trips)) p.trips = [];
+        if (Array.isArray(p.visited) && p.visited.length > 0) {
+          p.trips.push({
+            date: p.dates || '',
+            who: p.visited.slice(),
+            notes: p.notes || '',
+            photos: []
+          });
+        }
+        delete p.visited;
+        delete p.dates;
+        delete p.notes;
+        // Ensure every trip has a photos array
+        p.trips.forEach(t => {
+          if (!Array.isArray(t.photos)) t.photos = [];
+          if (!Array.isArray(t.who)) t.who = [];
+          if (typeof t.date !== 'string') t.date = '';
+          if (typeof t.notes !== 'string') t.notes = '';
+        });
+        if (cat === 'countries') {
+          if (!Array.isArray(p.topSites)) p.topSites = [];
+          p.topSites.forEach(s => {
+            if (typeof s.visited !== 'boolean') s.visited = false;
+            if (typeof s.notes !== 'string') s.notes = '';
+          });
+        }
+      });
+    });
+    return data;
+  }
+
+  function initMapFilters() {
+    Object.keys(DATA.categories).forEach(catKey => {
+      const cat = DATA.categories[catKey];
+      mapCategoryFilters[catKey] = !!cat.defaultVisible;
+    });
+  }
+
+  // ----- Helpers -----
+  function visitedSet(trips) {
+    const s = new Set();
+    (trips || []).forEach(t => (t.who || []).forEach(n => s.add(n)));
+    return s;
+  }
+  function visitedArr(trips) { return Array.from(visitedSet(trips)); }
+  function isVisitedByAll(trips) {
+    const v = visitedSet(trips);
+    return DATA.family.every(n => v.has(n));
+  }
+  function categoryColor(catKey) {
+    return (DATA.categories[catKey] || {}).color || '#666';
+  }
+  function placeOpacity(place) {
+    const v = visitedSet(place.trips);
+    if (v.size === 0) return 0.35;
+    if (DATA.family.every(n => v.has(n))) return 1.0;
+    return 0.75;
+  }
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ----- Render -----
   function render() {
+    renderTabs();
     renderStats();
-    if (currentView === 'list') renderList();
-    else renderMap();
+    renderToolbar();
+    if (currentTab === 'map') renderMap();
+    else if (currentTab === 'international') renderInternational();
+    else renderListGroup();
+  }
+
+  function renderTabs() {
+    const groups = DATA.groupOrder || ['nps','state','international'];
+    const labels = DATA.groupLabels || {};
+    let html = '';
+    groups.forEach(g => {
+      html += '<button class="tab' + (currentTab === g ? ' active' : '') + '" data-tab="' + g + '">' + escHtml(labels[g] || g) + '</button>';
+    });
+    html += '<button class="tab' + (currentTab === 'map' ? ' active' : '') + '" data-tab="map">All on Map</button>';
+    document.getElementById('tabs').innerHTML = html;
+    document.querySelectorAll('#tabs .tab').forEach(t => {
+      t.addEventListener('click', () => {
+        currentTab = t.dataset.tab;
+        npsSubFilter = null;
+        listSearch = '';
+        listVisitedFilter = 'all';
+        render();
+      });
+    });
   }
 
   function renderStats() {
-    const list = DATA[currentTab] || [];
-    const total = list.length;
-    const anyVisited = list.filter(p => (p.visited || []).length > 0).length;
-    const allFam = list.filter(p => DATA.family.every(n => (p.visited || []).includes(n))).length;
-
-    let html = '';
-    html += statCard('Total ' + TAB_LABELS[currentTab], total);
-    html += statCard('Visited (any of us)', anyVisited, Math.round(anyVisited / total * 100) + '%');
-    html += statCard('Visited by everyone', allFam, Math.round(allFam / total * 100) + '%');
-
-    DATA.family.forEach(name => {
-      const count = list.filter(p => (p.visited || []).includes(name)).length;
-      html += statCard(name, count, Math.round(count / total * 100) + '%');
+    if (currentTab === 'map') { document.getElementById('stats').innerHTML = ''; return; }
+    const cats = categoriesInGroup(currentTab);
+    let total = 0, anyVisited = 0, allFam = 0;
+    const perPerson = {};
+    DATA.family.forEach(n => perPerson[n] = 0);
+    cats.forEach(catKey => {
+      (DATA.places[catKey] || []).forEach(p => {
+        total++;
+        const v = visitedSet(p.trips);
+        if (v.size > 0) anyVisited++;
+        if (DATA.family.every(n => v.has(n))) allFam++;
+        DATA.family.forEach(n => { if (v.has(n)) perPerson[n]++; });
+      });
     });
-
+    let html = '';
+    html += statCard('Total places', total);
+    html += statCard('Visited (any)', anyVisited, total ? Math.round(anyVisited/total*100)+'%' : '');
+    html += statCard('Visited by all', allFam, total ? Math.round(allFam/total*100)+'%' : '');
+    DATA.family.forEach(n => html += statCard(n, perPerson[n], total ? Math.round(perPerson[n]/total*100)+'%' : ''));
     document.getElementById('stats').innerHTML = html;
   }
-
   function statCard(label, value, sub) {
-    return '<div class="stat-card"><div class="label">' + escapeHtml(label) +
-           '</div><div class="value">' + value + '</div>' +
-           (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+    return '<div class="stat-card"><div class="label">' + escHtml(label) + '</div><div class="value">' + value + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
   }
 
-  function renderList() {
-    document.getElementById('listView').style.display = '';
-    document.getElementById('mapView').style.display = 'none';
-    document.getElementById('filterBar').style.display = '';
+  function categoriesInGroup(group) {
+    return Object.keys(DATA.categories).filter(c => DATA.categories[c].group === group);
+  }
 
-    const search = document.getElementById('searchBox').value.toLowerCase();
-    const filter = document.getElementById('visitedFilter').value;
-    const list = (DATA[currentTab] || []).slice();
-    list.sort((a, b) => a.name.localeCompare(b.name));
+  function renderToolbar() {
+    let html = '';
+    if (currentTab === 'map') {
+      // Map view has its own filter panel rendered in content
+      document.getElementById('toolbar').innerHTML = '';
+      return;
+    }
+    if (currentTab === 'international') {
+      html += '<input type="text" id="searchBox" placeholder="Search countries..." value="' + escHtml(listSearch) + '" />';
+      html += '<select id="visitedFilter">';
+      html += '<option value="all"' + (listVisitedFilter==='all'?' selected':'') + '>All countries</option>';
+      html += '<option value="any"' + (listVisitedFilter==='any'?' selected':'') + '>Visited</option>';
+      html += '<option value="none"' + (listVisitedFilter==='none'?' selected':'') + '>Not visited</option>';
+      html += '</select>';
+      document.getElementById('toolbar').innerHTML = html;
+    } else {
+      html += '<input type="text" id="searchBox" placeholder="Search..." value="' + escHtml(listSearch) + '" />';
+      html += '<select id="visitedFilter">';
+      html += '<option value="all"' + (listVisitedFilter==='all'?' selected':'') + '>All places</option>';
+      html += '<option value="any"' + (listVisitedFilter==='any'?' selected':'') + '>Visited (any)</option>';
+      html += '<option value="all-fam"' + (listVisitedFilter==='all-fam'?' selected':'') + '>Visited by everyone</option>';
+      html += '<option value="none"' + (listVisitedFilter==='none'?' selected':'') + '>Not visited</option>';
+      html += '</select>';
+      // Sub-category chips
+      const cats = categoriesInGroup(currentTab);
+      if (cats.length > 1) {
+        html += '<div class="cat-chips" style="width:100%;margin-top:6px;margin-bottom:0;">';
+        html += chip('all', 'All', npsSubFilter === null);
+        cats.forEach(c => {
+          const meta = DATA.categories[c];
+          html += chipColored(c, meta.label, meta.color, npsSubFilter === c);
+        });
+        html += '</div>';
+      }
+      document.getElementById('toolbar').innerHTML = html;
+    }
+    const sb = document.getElementById('searchBox');
+    if (sb) sb.addEventListener('input', e => { listSearch = e.target.value; render(); });
+    const vf = document.getElementById('visitedFilter');
+    if (vf) vf.addEventListener('change', e => { listVisitedFilter = e.target.value; render(); });
+    document.querySelectorAll('.cat-chip').forEach(el => {
+      el.addEventListener('click', () => {
+        const v = el.dataset.cat;
+        npsSubFilter = (v === 'all') ? null : v;
+        render();
+      });
+    });
+  }
+  function chip(key, label, active) {
+    return '<span class="cat-chip" data-cat="' + escHtml(key) + '" style="' +
+      (active ? 'background:var(--accent);color:#fff;border-color:var(--accent);' : 'border-color:var(--border);color:var(--muted);') + '">' +
+      escHtml(label) + '</span>';
+  }
+  function chipColored(key, label, color, active) {
+    if (active) {
+      return '<span class="cat-chip" data-cat="' + escHtml(key) + '" style="background:' + color + ';color:#fff;border-color:' + color + ';">' +
+        '<span class="dot" style="background:#fff;"></span>' + escHtml(label) + '</span>';
+    }
+    return '<span class="cat-chip" data-cat="' + escHtml(key) + '" style="border-color:' + color + ';color:var(--ink);">' +
+      '<span class="dot" style="background:' + color + ';"></span>' + escHtml(label) + '</span>';
+  }
 
-    const filtered = list.filter(p => {
-      if (search && !(p.name + ' ' + (p.state || '')).toLowerCase().includes(search)) return false;
-      const v = p.visited || [];
-      if (filter === 'any' && v.length === 0) return false;
-      if (filter === 'none' && v.length > 0) return false;
-      if (filter === 'all-fam' && !DATA.family.every(n => v.includes(n))) return false;
+  function placesMatchingFilter(catKey) {
+    const list = (DATA.places[catKey] || []).slice();
+    return list.filter(p => {
+      if (listSearch && !((p.name + ' ' + (p.state||'')).toLowerCase().includes(listSearch.toLowerCase()))) return false;
+      const v = visitedSet(p.trips);
+      if (listVisitedFilter === 'any' && v.size === 0) return false;
+      if (listVisitedFilter === 'none' && v.size > 0) return false;
+      if (listVisitedFilter === 'all-fam' && !DATA.family.every(n => v.has(n))) return false;
       return true;
     });
+  }
 
+  function renderListGroup() {
+    const cats = categoriesInGroup(currentTab);
+    const visibleCats = npsSubFilter ? [npsSubFilter] : cats;
+    let entries = [];
+    visibleCats.forEach(catKey => {
+      placesMatchingFilter(catKey).forEach(p => entries.push({ catKey, place: p }));
+    });
+    entries.sort((a, b) => a.place.name.localeCompare(b.place.name));
     let html = '';
-    filtered.forEach((p, idx) => {
-      const realIdx = DATA[currentTab].indexOf(p);
-      const v = p.visited || [];
-      const allFam = DATA.family.every(n => v.includes(n));
-      const some = v.length > 0;
-      const cls = allFam ? 'visited-by-all' : (some ? 'visited-some' : '');
-
-      html += '<div class="park-card ' + cls + '" data-idx="' + realIdx + '">';
-      html += '<div class="park-head">';
-      html += '<div class="park-name">' + escapeHtml(p.name) + '</div>';
-      html += '<div class="park-state">' + escapeHtml(p.state || '') + '</div>';
-      html += '</div>';
-      html += '<div class="visited-row">';
-      DATA.family.forEach(name => {
-        const checked = v.includes(name);
-        html += '<span class="person-chip ' + (checked ? 'checked' : '') + '" data-name="' + escapeHtml(name) + '" data-idx="' + realIdx + '">' +
-                (checked ? '✓ ' : '') + escapeHtml(name) + '</span>';
+    if (entries.length === 0) {
+      html = '<div style="background:var(--card);border:1px solid var(--border);padding:20px;border-radius:10px;text-align:center;color:var(--muted);">No places match these filters.</div>';
+    } else {
+      html += '<div class="park-list">';
+      entries.forEach(({catKey, place}) => {
+        html += renderPlaceCard(catKey, place);
       });
       html += '</div>';
-
-      const dates = p.dates || '';
-      const notes = p.notes || '';
-      html += '<div class="park-meta">';
-      html += '<div><strong>Visited:</strong> ' + (dates ? escapeHtml(dates) : '<span class="empty">no date logged</span>') + '</div>';
-      if (notes) html += '<div style="margin-top:4px;"><strong>Notes:</strong> ' + escapeHtml(notes) + '</div>';
-      html += '</div>';
-
-      // Admin edit area
-      html += '<div class="admin-edit">';
-      html += '<label>Date(s) visited<input type="text" data-field="dates" data-idx="' + realIdx + '" value="' + escapeAttr(dates) + '" placeholder="e.g. June 2024"/></label>';
-      html += '<label>Notes<textarea data-field="notes" data-idx="' + realIdx + '" placeholder="Memorable moments...">' + escapeHtml(notes) + '</textarea></label>';
-      html += '</div>';
-
-      html += '</div>';
-    });
-
-    if (filtered.length === 0) {
-      html = '<div style="background:var(--card);border:1px solid var(--border);padding:20px;border-radius:10px;text-align:center;color:var(--muted);">No parks match these filters.</div>';
     }
-
-    document.getElementById('listView').innerHTML = html;
+    document.getElementById('content').innerHTML = html;
     bindCardHandlers();
   }
 
+  function renderPlaceCard(catKey, place) {
+    const meta = DATA.categories[catKey];
+    const v = visitedSet(place.trips);
+    let html = '<div class="park-card" data-cat="' + escHtml(catKey) + '" data-name="' + escHtml(place.name) + '">';
+    html += '<div class="park-head">';
+    html += '<div class="park-name">' + escHtml(place.name) + '</div>';
+    html += '<div class="park-tags">';
+    if (place.state) html += '<span class="park-state">' + escHtml(place.state) + '</span>';
+    html += '<span class="park-tag" style="background:' + meta.color + ';">' + escHtml(meta.label) + '</span>';
+    html += '</div></div>';
+
+    // Visited summary chips (read-only)
+    html += '<div class="visited-summary">';
+    DATA.family.forEach(n => {
+      const checked = v.has(n);
+      html += '<span class="person-chip ' + (checked ? 'checked' : '') + '">' + (checked ? '✓ ' : '') + escHtml(n) + '</span>';
+    });
+    html += '</div>';
+
+    // Trips list
+    if (place.trips && place.trips.length > 0) {
+      html += '<div class="trips-list">';
+      place.trips.forEach((trip, ti) => {
+        html += '<div class="trip-item" data-trip="' + ti + '">';
+        html += '<div class="trip-line">';
+        html += '<span class="trip-date">' + (trip.date ? escHtml(trip.date) : '<em>no date</em>') + '</span>';
+        html += '<span class="trip-who">— ' + escHtml((trip.who || []).join(', ')) + '</span>';
+        html += '<button class="trip-remove" data-cat="' + escHtml(catKey) + '" data-pname="' + escHtml(place.name) + '" data-trip="' + ti + '">remove</button>';
+        html += '</div>';
+        if (trip.notes) html += '<div class="trip-notes">' + escHtml(trip.notes) + '</div>';
+        // Photos for this trip
+        if (Array.isArray(trip.photos) && trip.photos.length > 0) {
+          html += '<div class="trip-photos">';
+          trip.photos.forEach((url, pi) => {
+            html += '<span class="trip-photo-wrap">';
+            html += '<img class="trip-photo-thumb" data-url="' + escHtml(url) + '" data-caption="' + escHtml(place.name + (trip.date ? ' — ' + trip.date : '')) + '" src="' + escHtml(url) + '" alt="trip photo" loading="lazy" onerror="this.classList.add(\'broken\');this.replaceWith(Object.assign(document.createElement(\'div\'),{className:\'trip-photo-thumb broken\',textContent:\'photo not loaded\'}));" />';
+            html += '<button class="trip-photo-remove" data-cat="' + escHtml(catKey) + '" data-pname="' + escHtml(place.name) + '" data-trip="' + ti + '" data-photo="' + pi + '" title="Remove photo">&times;</button>';
+            html += '</span>';
+          });
+          html += '</div>';
+        }
+        // Trip editor (admin)
+        html += '<div class="trip-editor">';
+        html += '<label>Date<input type="text" data-cat="' + escHtml(catKey) + '" data-pname="' + escHtml(place.name) + '" data-trip="' + ti + '" data-field="date" value="' + escHtml(trip.date || '') + '" placeholder="e.g. June 2024"/></label>';
+        html += '<label>Who went</label>';
+        html += '<div class="visited-summary" style="margin-top:2px;">';
+        DATA.family.forEach(n => {
+          const inTrip = (trip.who || []).indexOf(n) !== -1;
+          html += '<span class="person-chip editable ' + (inTrip ? 'checked' : '') + '" data-cat="' + escHtml(catKey) + '" data-pname="' + escHtml(place.name) + '" data-trip="' + ti + '" data-name="' + escHtml(n) + '">' + (inTrip ? '✓ ' : '') + escHtml(n) + '</span>';
+        });
+        html += '</div>';
+        html += '<label>Notes<textarea data-cat="' + escHtml(catKey) + '" data-pname="' + escHtml(place.name) + '" data-trip="' + ti + '" data-field="notes" placeholder="Memorable moments...">' + escHtml(trip.notes || '') + '</textarea></label>';
+        html += '<label>Add a photo (paste image URL)</label>';
+        html += '<div class="photo-add-row">';
+        html += '<input type="text" class="photo-url-input" data-cat="' + escHtml(catKey) + '" data-pname="' + escHtml(place.name) + '" data-trip="' + ti + '" placeholder="https://..." />';
+        html += '<button class="add-photo-btn" data-cat="' + escHtml(catKey) + '" data-pname="' + escHtml(place.name) + '" data-trip="' + ti + '">Add photo</button>';
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    // Add trip button
+    if (isAdmin) {
+      html += '<button class="add-trip-btn ' + (place.trips && place.trips.length > 0 ? 'secondary' : '') + '" data-cat="' + escHtml(catKey) + '" data-pname="' + escHtml(place.name) + '">+ Add trip</button>';
+    }
+
+    // Country top sites
+    if (catKey === 'countries' && Array.isArray(place.topSites) && place.topSites.length > 0) {
+      html += '<div class="topsites-list">';
+      html += '<div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">Top Sites</div>';
+      place.topSites.forEach((s, si) => {
+        html += '<div class="topsite-row ' + (s.visited ? 'checked' : '') + '">';
+        html += '<span class="topsite-checkbox ' + (s.visited ? 'checked' : '') + '" data-cat="countries" data-pname="' + escHtml(place.name) + '" data-site="' + si + '">' + (s.visited ? '✓' : '') + '</span>';
+        html += '<span class="topsite-name">' + escHtml(s.name) + (s.city ? '<span class="city">' + escHtml(s.city) + '</span>' : '') + '</span>';
+        html += '<input type="text" class="topsite-notes" data-cat="countries" data-pname="' + escHtml(place.name) + '" data-site="' + si + '" data-field="notes" value="' + escHtml(s.notes || '') + '" placeholder="notes..." />';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+  }
+
+  function findPlace(catKey, pname) {
+    return (DATA.places[catKey] || []).find(p => p.name === pname);
+  }
+
   function bindCardHandlers() {
+    // Thumbnail click -> lightbox (works for everyone, not just admin)
+    document.querySelectorAll('.trip-photo-thumb').forEach(img => {
+      img.addEventListener('click', () => {
+        const url = img.dataset.url;
+        const cap = img.dataset.caption || '';
+        if (!url) return;
+        document.getElementById('lightboxImg').src = url;
+        document.getElementById('lightboxImg').alt = cap;
+        document.getElementById('lightboxCaption').textContent = cap;
+        document.getElementById('lightbox').classList.add('open');
+      });
+    });
     if (!isAdmin) return;
-    document.querySelectorAll('.person-chip').forEach(el => {
-      el.addEventListener('click', () => {
-        const idx = parseInt(el.dataset.idx);
-        const name = el.dataset.name;
-        const park = DATA[currentTab][idx];
-        park.visited = park.visited || [];
-        const i = park.visited.indexOf(name);
-        if (i === -1) park.visited.push(name);
-        else park.visited.splice(i, 1);
-        renderStats();
-        // Update visual without full re-render
-        el.classList.toggle('checked');
-        el.innerHTML = (park.visited.includes(name) ? '✓ ' : '') + escapeHtml(name);
-        // Update card border
-        const card = el.closest('.park-card');
-        const v = park.visited;
-        card.classList.toggle('visited-by-all', DATA.family.every(n => v.includes(n)));
-        card.classList.toggle('visited-some', v.length > 0 && !DATA.family.every(n => v.includes(n)));
+    // Add photo
+    document.querySelectorAll('.add-photo-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const place = findPlace(btn.dataset.cat, btn.dataset.pname);
+        const trip = place.trips[parseInt(btn.dataset.trip)];
+        const input = document.querySelector('.photo-url-input[data-cat="' + btn.dataset.cat + '"][data-pname="' + btn.dataset.pname + '"][data-trip="' + btn.dataset.trip + '"]');
+        const url = (input && input.value || '').trim();
+        if (!url) return;
+        trip.photos = trip.photos || [];
+        trip.photos.push(url);
+        render();
       });
     });
-    document.querySelectorAll('.admin-edit input, .admin-edit textarea').forEach(el => {
+    // Remove photo
+    document.querySelectorAll('.trip-photo-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const place = findPlace(btn.dataset.cat, btn.dataset.pname);
+        const trip = place.trips[parseInt(btn.dataset.trip)];
+        const pi = parseInt(btn.dataset.photo);
+        trip.photos.splice(pi, 1);
+        render();
+      });
+    });
+    // Add trip
+    document.querySelectorAll('.add-trip-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const place = findPlace(btn.dataset.cat, btn.dataset.pname);
+        place.trips = place.trips || [];
+        place.trips.push({ date: '', who: [], notes: '' });
+        render();
+      });
+    });
+    // Remove trip
+    document.querySelectorAll('.trip-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const place = findPlace(btn.dataset.cat, btn.dataset.pname);
+        const ti = parseInt(btn.dataset.trip);
+        place.trips.splice(ti, 1);
+        render();
+      });
+    });
+    // Trip editor inputs
+    document.querySelectorAll('.trip-editor input[data-field], .trip-editor textarea[data-field]').forEach(el => {
       el.addEventListener('input', () => {
-        const idx = parseInt(el.dataset.idx);
-        const field = el.dataset.field;
-        DATA[currentTab][idx][field] = el.value;
+        const place = findPlace(el.dataset.cat, el.dataset.pname);
+        const trip = place.trips[parseInt(el.dataset.trip)];
+        trip[el.dataset.field] = el.value;
+      });
+    });
+    // Trip who chips
+    document.querySelectorAll('.person-chip.editable').forEach(el => {
+      el.addEventListener('click', () => {
+        const place = findPlace(el.dataset.cat, el.dataset.pname);
+        const trip = place.trips[parseInt(el.dataset.trip)];
+        const name = el.dataset.name;
+        trip.who = trip.who || [];
+        const i = trip.who.indexOf(name);
+        if (i === -1) trip.who.push(name); else trip.who.splice(i, 1);
+        render();
+      });
+    });
+    // Top site checkboxes
+    document.querySelectorAll('.topsite-checkbox').forEach(el => {
+      el.addEventListener('click', () => {
+        const place = findPlace(el.dataset.cat, el.dataset.pname);
+        const site = place.topSites[parseInt(el.dataset.site)];
+        site.visited = !site.visited;
+        render();
+      });
+    });
+    // Top site notes
+    document.querySelectorAll('.topsite-notes').forEach(el => {
+      el.addEventListener('input', () => {
+        const place = findPlace(el.dataset.cat, el.dataset.pname);
+        const site = place.topSites[parseInt(el.dataset.site)];
+        site.notes = el.value;
       });
     });
   }
 
+  function renderInternational() { renderListGroup(); }
+
+  // ----- Map view -----
   function renderMap() {
-    document.getElementById('listView').style.display = 'none';
-    document.getElementById('mapView').style.display = '';
-    document.getElementById('filterBar').style.display = 'none';
-
-    if (!mapInstance) {
-      mapInstance = L.map('map').setView([39.5, -100], 4);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 18,
-        attribution: '&copy; OpenStreetMap'
-      }).addTo(mapInstance);
-    }
-
-    if (markerLayer) mapInstance.removeLayer(markerLayer);
-    markerLayer = L.layerGroup().addTo(mapInstance);
-
-    const list = DATA[currentTab] || [];
-    const visibleBounds = [];
-    list.forEach(p => {
-      if (typeof p.lat !== 'number' || typeof p.lng !== 'number') return;
-      const v = p.visited || [];
-      const allFam = DATA.family.every(n => v.includes(n));
-      let color = '#bbb';
-      if (allFam) color = '#4a6741';
-      else if (v.length > 0) color = '#c97b3f';
-
-      const marker = L.circleMarker([p.lat, p.lng], {
-        radius: 7,
-        fillColor: color,
-        color: '#fff',
-        weight: 2,
-        opacity: 1,
-        fillOpacity: 0.9
-      }).addTo(markerLayer);
-
-      let popup = '<strong>' + escapeHtml(p.name) + '</strong><br><span style="color:#888;">' + escapeHtml(p.state || '') + '</span>';
-      popup += '<br>Visited by: ' + (v.length > 0 ? escapeHtml(v.join(', ')) : '<em>nobody yet</em>');
-      if (p.dates) popup += '<br>Date: ' + escapeHtml(p.dates);
-      marker.bindPopup(popup);
-      visibleBounds.push([p.lat, p.lng]);
-    });
-
-    if (visibleBounds.length > 0 && currentTab === 'utahStateParks') {
-      mapInstance.fitBounds(visibleBounds, { padding: [30, 30] });
-    } else {
-      // Default US-wide view for the others
-      mapInstance.setView([39.5, -100], currentTab === 'nationalMonuments' ? 4 : 4);
-    }
-    setTimeout(() => mapInstance.invalidateSize(), 100);
+    let html = '<div class="map-filter-panel" id="mapFilterPanel"></div><div class="map-wrap"><div id="map"></div></div>';
+    document.getElementById('content').innerHTML = html;
+    renderMapFilterPanel();
+    setTimeout(setupMap, 50);
   }
 
-  // Tab handling
-  document.querySelectorAll('.tab').forEach(t => {
-    t.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      currentTab = t.dataset.tab;
-      render();
+  function renderMapFilterPanel() {
+    const panel = document.getElementById('mapFilterPanel');
+    const groups = DATA.groupOrder || [];
+    let html = '';
+    html += '<div class="map-filter-actions"><button id="filterAllOn">Show all</button><button id="filterAllOff">Hide all</button><button id="filterDefault">Default</button></div>';
+    groups.forEach(g => {
+      const cats = categoriesInGroup(g);
+      if (!cats.length) return;
+      html += '<h4>' + escHtml((DATA.groupLabels || {})[g] || g) + '</h4>';
+      cats.forEach(c => {
+        const meta = DATA.categories[c];
+        html += '<label><input type="checkbox" data-mapcat="' + escHtml(c) + '" ' + (mapCategoryFilters[c] ? 'checked' : '') + '/>';
+        html += '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' + meta.color + ';"></span>';
+        html += escHtml(meta.label) + '</label>';
+      });
     });
-  });
-
-  document.querySelectorAll('.view-btn').forEach(b => {
-    b.addEventListener('click', () => {
-      document.querySelectorAll('.view-btn').forEach(x => x.classList.remove('active'));
-      b.classList.add('active');
-      currentView = b.dataset.view;
-      render();
+    panel.innerHTML = html;
+    panel.querySelectorAll('input[data-mapcat]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        mapCategoryFilters[cb.dataset.mapcat] = cb.checked;
+        refreshMapMarkers();
+      });
     });
-  });
+    document.getElementById('filterAllOn').addEventListener('click', () => {
+      Object.keys(mapCategoryFilters).forEach(k => mapCategoryFilters[k] = true);
+      renderMapFilterPanel(); refreshMapMarkers();
+    });
+    document.getElementById('filterAllOff').addEventListener('click', () => {
+      Object.keys(mapCategoryFilters).forEach(k => mapCategoryFilters[k] = false);
+      renderMapFilterPanel(); refreshMapMarkers();
+    });
+    document.getElementById('filterDefault').addEventListener('click', () => {
+      Object.keys(DATA.categories).forEach(k => mapCategoryFilters[k] = !!DATA.categories[k].defaultVisible);
+      renderMapFilterPanel(); refreshMapMarkers();
+    });
+  }
 
-  document.getElementById('searchBox').addEventListener('input', renderList);
-  document.getElementById('visitedFilter').addEventListener('change', renderList);
+  function setupMap() {
+    if (mapInstance) { mapInstance.remove(); mapInstance = null; clusterLayer = null; }
+    mapInstance = L.map('map').setView([39.5, -98], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; OpenStreetMap' }).addTo(mapInstance);
+    clusterLayer = L.markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 50 });
+    mapInstance.addLayer(clusterLayer);
+    refreshMapMarkers();
+  }
 
-  // Admin actions
+  function refreshMapMarkers() {
+    if (!clusterLayer) return;
+    clusterLayer.clearLayers();
+    const all = [];
+    Object.keys(DATA.places).forEach(catKey => {
+      if (!mapCategoryFilters[catKey]) return;
+      const meta = DATA.categories[catKey];
+      (DATA.places[catKey] || []).forEach(place => {
+        if (typeof place.lat !== 'number' || typeof place.lng !== 'number') return;
+        const marker = L.circleMarker([place.lat, place.lng], {
+          radius: 7,
+          fillColor: meta.color,
+          color: '#fff',
+          weight: 1.5,
+          opacity: 1,
+          fillOpacity: placeOpacity(place)
+        });
+        marker.bindPopup(buildMapPopup(catKey, place), { minWidth: 240, maxWidth: 320 });
+        marker.on('popupopen', e => bindPopupHandlers(catKey, place, marker, e.popup.getElement()));
+        clusterLayer.addLayer(marker);
+        all.push([place.lat, place.lng]);
+      });
+    });
+  }
+
+  function buildMapPopup(catKey, place) {
+    const meta = DATA.categories[catKey];
+    const v = visitedSet(place.trips);
+    let html = '<div class="popup-name">' + escHtml(place.name) + '</div>';
+    html += '<div class="popup-state">';
+    if (place.state) html += escHtml(place.state) + ' • ';
+    html += '<span style="color:' + meta.color + ';">' + escHtml(meta.label) + '</span></div>';
+    html += '<div class="visited-summary">';
+    DATA.family.forEach(n => {
+      const checked = v.has(n);
+      html += '<span class="person-chip ' + (checked ? 'checked' : '') + '">' + (checked ? '✓ ' : '') + escHtml(n) + '</span>';
+    });
+    html += '</div>';
+    if (place.trips && place.trips.length > 0) {
+      html += '<div style="margin-top:6px;font-size:12px;color:var(--muted);">';
+      place.trips.forEach(t => {
+        html += '<div><strong>' + escHtml(t.date || 'no date') + '</strong> — ' + escHtml((t.who||[]).join(', ')) + (t.notes ? ': ' + escHtml(t.notes) : '') + '</div>';
+      });
+      html += '</div>';
+    }
+    if (isAdmin) {
+      html += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--border);">';
+      html += '<button class="add-trip-btn" data-popup-cat="' + escHtml(catKey) + '" data-popup-pname="' + escHtml(place.name) + '">+ Add trip</button>';
+      html += '<div style="margin-top:6px;font-size:11px;color:var(--muted);">Open from list view to edit trip details.</div>';
+      html += '</div>';
+    }
+    return html;
+  }
+
+  function bindPopupHandlers(catKey, place, marker, popupEl) {
+    if (!popupEl) return;
+    const addBtn = popupEl.querySelector('[data-popup-cat]');
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
+        place.trips = place.trips || [];
+        place.trips.push({ date: '', who: DATA.family.slice(), notes: '' });
+        marker.setPopupContent(buildMapPopup(catKey, place));
+        marker.setStyle({ fillOpacity: placeOpacity(place) });
+      });
+    }
+  }
+
+  // ----- Admin actions -----
   document.getElementById('exportBtn').addEventListener('click', () => {
     const text = JSON.stringify(DATA, null, 2);
     document.getElementById('exportText').value = text;
     document.getElementById('exportModal').classList.add('open');
   });
-  document.getElementById('exitAdminBtn').addEventListener('click', () => {
-    location.search = '';
-  });
+  document.getElementById('exitAdminBtn').addEventListener('click', () => { location.search = ''; });
   document.getElementById('copyBtn').addEventListener('click', async () => {
     const ta = document.getElementById('exportText');
     ta.select();
@@ -566,25 +999,25 @@
       await navigator.clipboard.writeText(ta.value);
       document.getElementById('copyBtn').textContent = 'Copied!';
       setTimeout(() => document.getElementById('copyBtn').textContent = 'Copy to clipboard', 1500);
-    } catch (e) {
-      document.execCommand('copy');
-    }
+    } catch(e) { document.execCommand('copy'); }
   });
   document.getElementById('closeModalBtn').addEventListener('click', () => {
     document.getElementById('exportModal').classList.remove('open');
   });
-  document.getElementById('aboutLink').addEventListener('click', (e) => {
-    e.preventDefault();
-    document.getElementById('aboutModal').classList.add('open');
-  });
-  document.getElementById('closeAboutBtn').addEventListener('click', () => {
-    document.getElementById('aboutModal').classList.remove('open');
-  });
 
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  // Lightbox close handlers (one-time)
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('open');
+    document.getElementById('lightboxImg').src = '';
   }
-  function escapeAttr(s) { return escapeHtml(s); }
+  document.getElementById('lightboxClose').addEventListener('click', closeLightbox);
+  document.getElementById('lightbox').addEventListener('click', (e) => {
+    if (e.target.id === 'lightbox' || e.target.id === 'lightboxClose') closeLightbox();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && document.getElementById('lightbox').classList.contains('open')) closeLightbox();
+  });
+})();
 </script>
 </body>
 </html>
