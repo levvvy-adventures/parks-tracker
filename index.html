@@ -581,6 +581,39 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
+  // Convert common photo-host sharing URLs into directly-embeddable image URLs.
+  // Idempotent: an already-good URL passes through unchanged.
+  function normalizeImageUrl(url) {
+    if (!url || typeof url !== 'string') return url;
+    const u = url.trim();
+    // Already in thumbnail / direct form? leave alone.
+    if (u.indexOf('drive.google.com/thumbnail') !== -1) return u;
+    if (u.indexOf('lh3.googleusercontent.com') !== -1) return u;
+
+    // Google Drive sharing URL: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+    let m = u.match(/drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1600';
+    // Older Google Drive: https://drive.google.com/open?id=FILE_ID
+    m = u.match(/drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/);
+    if (m) return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1600';
+    // uc?id= style
+    if (u.indexOf('drive.google.com') !== -1) {
+      m = u.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (m) return 'https://drive.google.com/thumbnail?id=' + m[1] + '&sz=w1600';
+    }
+
+    // Dropbox: ?dl=0 returns an HTML page, ?raw=1 returns the image
+    if (u.indexOf('dropbox.com') !== -1) {
+      if (u.indexOf('?dl=0') !== -1) return u.replace('?dl=0', '?raw=1');
+      if (u.indexOf('&dl=0') !== -1) return u.replace('&dl=0', '&raw=1');
+      if (u.indexOf('raw=1') === -1 && u.indexOf('dl=1') === -1) {
+        return u + (u.indexOf('?') !== -1 ? '&' : '?') + 'raw=1';
+      }
+    }
+
+    return u;
+  }
+
   // ----- Render -----
   function render() {
     renderTabs();
@@ -837,8 +870,9 @@
         if (Array.isArray(trip.photos) && trip.photos.length > 0) {
           html += '<div class="trip-photos">';
           trip.photos.forEach((url, pi) => {
+            const displayUrl = normalizeImageUrl(url);
             html += '<span class="trip-photo-wrap">';
-            html += '<img class="trip-photo-thumb" data-url="' + escHtml(url) + '" data-caption="' + escHtml(place.name + (trip.date ? ' — ' + trip.date : '')) + '" src="' + escHtml(url) + '" alt="trip photo" loading="lazy" onerror="this.classList.add(\'broken\');this.replaceWith(Object.assign(document.createElement(\'div\'),{className:\'trip-photo-thumb broken\',textContent:\'photo not loaded\'}));" />';
+            html += '<img class="trip-photo-thumb" data-url="' + escHtml(displayUrl) + '" data-caption="' + escHtml(place.name + (trip.date ? ' — ' + trip.date : '')) + '" src="' + escHtml(displayUrl) + '" alt="trip photo" loading="lazy" referrerpolicy="no-referrer" onerror="this.classList.add(\'broken\');this.replaceWith(Object.assign(document.createElement(\'div\'),{className:\'trip-photo-thumb broken\',textContent:\'photo not loaded\'}));" />';
             html += '<button class="trip-photo-remove" data-cat="' + escHtml(catKey) + '" data-pname="' + escHtml(place.name) + '" data-trip="' + ti + '" data-photo="' + pi + '" title="Remove photo">&times;</button>';
             html += '</span>';
           });
