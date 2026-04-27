@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Price Family Parks Tracker</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root {
+    --bg: #f5f1e8;
+    --card: #ffffff;
+    --ink: #2d3a2e;
+    --muted: #6b7268;
+    --accent: #4a6741;
+    --accent-soft: #e6ede1;
+    --border: #d8d0bc;
+    --warm: #c97b3f;
+    --sky: #4a7a9d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+  }
+  header {
+    background: var(--accent);
+    color: #fff;
+    padding: 24px 20px 20px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  header h1 { margin: 0 0 4px; font-size: 26px; font-weight: 700; letter-spacing: 0.3px; }
+  header p { margin: 0; opacity: 0.85; font-size: 14px; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 16px; }
+
+  .tabs {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+    overflow-x: auto;
+  }
+  .tab {
+    padding: 10px 16px;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    font-size: 15px;
+    color: var(--muted);
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .stat-card .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-card .value { font-size: 22px; font-weight: 700; color: var(--accent); margin-top: 4px; }
+  .stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .view-toggle {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .view-btn {
+    padding: 8px 14px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .view-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  .filter-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .filter-bar input, .filter-bar select {
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--card);
+    color: var(--ink);
+  }
+  .filter-bar input { flex: 1 1 200px; min-width: 160px; }
+
+  .park-list { display: grid; gap: 10px; }
+  .park-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    transition: box-shadow 0.15s;
+  }
+  .park-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+  .park-card.visited-by-all { border-left: 4px solid var(--accent); }
+  .park-card.visited-some { border-left: 4px solid var(--warm); }
+  .park-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .park-name { font-size: 17px; font-weight: 600; }
+  .park-state { font-size: 13px; color: var(--muted); background: var(--accent-soft); padding: 2px 8px; border-radius: 6px; }
+
+  .visited-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .person-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 10px;
+    border-radius: 16px;
+    font-size: 13px;
+    background: #eee;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    cursor: default;
+    user-select: none;
+  }
+  .person-chip.checked {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+  }
+  body.admin .person-chip { cursor: pointer; }
+  body.admin .person-chip:hover { opacity: 0.85; }
+
+  .park-meta { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .park-meta strong { color: var(--ink); font-weight: 500; }
+  .park-meta .empty { font-style: italic; opacity: 0.7; }
+
+  .admin-edit { display: none; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+  body.admin .admin-edit { display: block; }
+  .admin-edit input, .admin-edit textarea {
+    width: 100%;
+    padding: 6px 8px;
+    margin-top: 4px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--card);
+    color: var(--ink);
+  }
+  .admin-edit textarea { min-height: 50px; resize: vertical; }
+  .admin-edit label { font-size: 12px; color: var(--muted); margin-top: 6px; display: block; }
+
+  #map { height: 600px; border-radius: 10px; border: 1px solid var(--border); }
+
+  .admin-bar {
+    display: none;
+    position: sticky;
+    bottom: 12px;
+    margin: 16px 0 0;
+    background: var(--ink);
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  }
+  body.admin .admin-bar { display: flex; }
+  .admin-bar button {
+    background: var(--warm);
+    color: #fff;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .admin-bar button.secondary { background: transparent; border: 1px solid #fff; }
+
+  .modal-backdrop {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    align-items: center; justify-content: center;
+    z-index: 9999;
+    padding: 20px;
+  }
+  .modal-backdrop.open { display: flex; }
+  .modal {
+    background: var(--card);
+    border-radius: 12px;
+    padding: 18px;
+    max-width: 700px;
+    width: 100%;
+    max-height: 85vh;
+    overflow: auto;
+  }
+  .modal h3 { margin: 0 0 8px; }
+  .modal textarea {
+    width: 100%;
+    min-height: 280px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .modal .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .modal button {
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .modal button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  footer { text-align: center; color: var(--muted); font-size: 12px; padding: 24px 0 40px; }
+  footer a { color: var(--muted); text-decoration: underline; }
+
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--muted); margin: 8px 0; }
+  .legend-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Price Family Parks Tracker</h1>
+  <p>National Parks, National Monuments, and Utah State Parks</p>
+</header>
+
+<div class="container">
+
+  <div class="tabs">
+    <button class="tab active" data-tab="nationalParks">National Parks</button>
+    <button class="tab" data-tab="nationalMonuments">National Monuments</button>
+    <button class="tab" data-tab="utahStateParks">Utah State Parks</button>
+  </div>
+
+  <div id="stats" class="stats"></div>
+
+  <div class="view-toggle">
+    <button class="view-btn active" data-view="list">List</button>
+    <button class="view-btn" data-view="map">Map</button>
+  </div>
+
+  <div class="filter-bar" id="filterBar">
+    <input type="text" id="searchBox" placeholder="Search parks..." />
+    <select id="visitedFilter">
+      <option value="all">All parks</option>
+      <option value="any">Visited by anyone</option>
+      <option value="all-fam">Visited by everyone</option>
+      <option value="none">Not visited yet</option>
+    </select>
+  </div>
+
+  <div id="listView" class="park-list"></div>
+
+  <div id="mapView" style="display:none;">
+    <div class="legend">
+      <span><span class="legend-dot" style="background:#4a6741;"></span>Visited by everyone</span>
+      <span><span class="legend-dot" style="background:#c97b3f;"></span>Visited by some</span>
+      <span><span class="legend-dot" style="background:#bbb;"></span>Not visited</span>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <div class="admin-bar">
+    <span>Admin mode is ON. Edits are local until you Export &amp; commit to GitHub.</span>
+    <div>
+      <button id="exportBtn">Export updated data</button>
+      <button class="secondary" id="exitAdminBtn">Exit admin mode</button>
+    </div>
+  </div>
+
+  <footer>
+    <p>Tip: add <code>?admin=1</code> to the URL to edit. <a href="#" id="aboutLink">About this site</a></p>
+  </footer>
+</div>
+
+<div class="modal-backdrop" id="exportModal">
+  <div class="modal">
+    <h3>Updated data.json</h3>
+    <p style="margin: 0 0 10px; font-size: 14px; color: var(--muted);">
+      Copy everything below, then go to your <strong>data.json</strong> file on GitHub, click the pencil icon to edit,
+      paste this in (replacing all existing content), and commit. The site updates within a minute.
+    </p>
+    <textarea id="exportText" readonly></textarea>
+    <div class="actions">
+      <button class="primary" id="copyBtn">Copy to clipboard</button>
+      <button id="closeModalBtn">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="aboutModal">
+  <div class="modal">
+    <h3>About</h3>
+    <p>This is the Price family parks tracker, built for Levi, Lucy, Rockwell, and Asher.</p>
+    <p>The site reads from a single <code>data.json</code> file in this site's GitHub repository. To log new visits, the family admin opens the site with <code>?admin=1</code> at the end of the URL, makes changes, exports the new JSON, and pastes it into GitHub. All visitors see the latest data automatically.</p>
+    <div class="actions">
+      <button class="primary" id="closeAboutBtn">Got it</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  let DATA = null;
+  let currentTab = 'nationalParks';
+  let currentView = 'list';
+  let mapInstance = null;
+  let markerLayer = null;
+  const isAdmin = new URLSearchParams(location.search).get('admin') === '1';
+
+  if (isAdmin) document.body.classList.add('admin');
+
+  const TAB_LABELS = {
+    nationalParks: 'National Parks',
+    nationalMonuments: 'National Monuments',
+    utahStateParks: 'Utah State Parks'
+  };
+
+  // Load data.json. Try to bust cache by appending timestamp.
+  fetch('data.json?t=' + Date.now())
+    .then(r => r.json())
+    .then(d => { DATA = d; render(); })
+    .catch(err => {
+      document.querySelector('.container').innerHTML =
+        '<div style="background:#fff3cd;padding:16px;border-radius:8px;border:1px solid #ffeaa7;">' +
+        '<strong>Could not load data.json.</strong><br>' +
+        'If you are previewing this file locally by double-clicking it, browsers block local file loads. ' +
+        'Either run <code>python3 -m http.server</code> in this folder, or publish to GitHub Pages.<br>' +
+        '<small>' + err.message + '</small></div>';
+    });
+
+  function render() {
+    renderStats();
+    if (currentView === 'list') renderList();
+    else renderMap();
+  }
+
+  function renderStats() {
+    const list = DATA[currentTab] || [];
+    const total = list.length;
+    const anyVisited = list.filter(p => (p.visited || []).length > 0).length;
+    const allFam = list.filter(p => DATA.family.every(n => (p.visited || []).includes(n))).length;
+
+    let html = '';
+    html += statCard('Total ' + TAB_LABELS[currentTab], total);
+    html += statCard('Visited (any of us)', anyVisited, Math.round(anyVisited / total * 100) + '%');
+    html += statCard('Visited by everyone', allFam, Math.round(allFam / total * 100) + '%');
+
+    DATA.family.forEach(name => {
+      const count = list.filter(p => (p.visited || []).includes(name)).length;
+      html += statCard(name, count, Math.round(count / total * 100) + '%');
+    });
+
+    document.getElementById('stats').innerHTML = html;
+  }
+
+  function statCard(label, value, sub) {
+    return '<div class="stat-card"><div class="label">' + escapeHtml(label) +
+           '</div><div class="value">' + value + '</div>' +
+           (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
+  }
+
+  function renderList() {
+    document.getElementById('listView').style.display = '';
+    document.getElementById('mapView').style.display = 'none';
+    document.getElementById('filterBar').style.display = '';
+
+    const search = document.getElementById('searchBox').value.toLowerCase();
+    const filter = document.getElementById('visitedFilter').value;
+    const list = (DATA[currentTab] || []).slice();
+    list.sort((a, b) => a.name.localeCompare(b.name));
+
+    const filtered = list.filter(p => {
+      if (search && !(p.name + ' ' + (p.state || '')).toLowerCase().includes(search)) return false;
+      const v = p.visited || [];
+      if (filter === 'any' && v.length === 0) return false;
+      if (filter === 'none' && v.length > 0) return false;
+      if (filter === 'all-fam' && !DATA.family.every(n => v.includes(n))) return false;
+      return true;
+    });
+
+    let html = '';
+    filtered.forEach((p, idx) => {
+      const realIdx = DATA[currentTab].indexOf(p);
+      const v = p.visited || [];
+      const allFam = DATA.family.every(n => v.includes(n));
+      const some = v.length > 0;
+      const cls = allFam ? 'visited-by-all' : (some ? 'visited-some' : '');
+
+      html += '<div class="park-card ' + cls + '" data-idx="' + realIdx + '">';
+      html += '<div class="park-head">';
+      html += '<div class="park-name">' + escapeHtml(p.name) + '</div>';
+      html += '<div class="park-state">' + escapeHtml(p.state || '') + '</div>';
+      html += '</div>';
+      html += '<div class="visited-row">';
+      DATA.family.forEach(name => {
+        const checked = v.includes(name);
+        html += '<span class="person-chip ' + (checked ? 'checked' : '') + '" data-name="' + escapeHtml(name) + '" data-idx="' + realIdx + '">' +
+                (checked ? '✓ ' : '') + escapeHtml(name) + '</span>';
+      });
+      html += '</div>';
+
+      const dates = p.dates || '';
+      const notes = p.notes || '';
+      html += '<div class="park-meta">';
+      html += '<div><strong>Visited:</strong> ' + (dates ? escapeHtml(dates) : '<span class="empty">no date logged</span>') + '</div>';
+      if (notes) html += '<div style="margin-top:4px;"><strong>Notes:</strong> ' + escapeHtml(notes) + '</div>';
+      html += '</div>';
+
+      // Admin edit area
+      html += '<div class="admin-edit">';
+      html += '<label>Date(s) visited<input type="text" data-field="dates" data-idx="' + realIdx + '" value="' + escapeAttr(dates) + '" placeholder="e.g. June 2024"/></label>';
+      html += '<label>Notes<textarea data-field="notes" data-idx="' + realIdx + '" placeholder="Memorable moments...">' + escapeHtml(notes) + '</textarea></label>';
+      html += '</div>';
+
+      html += '</div>';
+    });
+
+    if (filtered.length === 0) {
+      html = '<div style="background:var(--card);border:1px solid var(--border);padding:20px;border-radius:10px;text-align:center;color:var(--muted);">No parks match these filters.</div>';
+    }
+
+    document.getElementById('listView').innerHTML = html;
+    bindCardHandlers();
+  }
+
+  function bindCardHandlers() {
+    if (!isAdmin) return;
+    document.querySelectorAll('.person-chip').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = parseInt(el.dataset.idx);
+        const name = el.dataset.name;
+        const park = DATA[currentTab][idx];
+        park.visited = park.visited || [];
+        const i = park.visited.indexOf(name);
+        if (i === -1) park.visited.push(name);
+        else park.visited.splice(i, 1);
+        renderStats();
+        // Update visual without full re-render
+        el.classList.toggle('checked');
+        el.innerHTML = (park.visited.includes(name) ? '✓ ' : '') + escapeHtml(name);
+        // Update card border
+        const card = el.closest('.park-card');
+        const v = park.visited;
+        card.classList.toggle('visited-by-all', DATA.family.every(n => v.includes(n)));
+        card.classList.toggle('visited-some', v.length > 0 && !DATA.family.every(n => v.includes(n)));
+      });
+    });
+    document.querySelectorAll('.admin-edit input, .admin-edit textarea').forEach(el => {
+      el.addEventListener('input', () => {
+        const idx = parseInt(el.dataset.idx);
+        const field = el.dataset.field;
+        DATA[currentTab][idx][field] = el.value;
+      });
+    });
+  }
+
+  function renderMap() {
+    document.getElementById('listView').style.display = 'none';
+    document.getElementById('mapView').style.display = '';
+    document.getElementById('filterBar').style.display = 'none';
+
+    if (!mapInstance) {
+      mapInstance = L.map('map').setView([39.5, -100], 4);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+        attribution: '&copy; OpenStreetMap'
+      }).addTo(mapInstance);
+    }
+
+    if (markerLayer) mapInstance.removeLayer(markerLayer);
+    markerLayer = L.layerGroup().addTo(mapInstance);
+
+    const list = DATA[currentTab] || [];
+    const visibleBounds = [];
+    list.forEach(p => {
+      if (typeof p.lat !== 'number' || typeof p.lng !== 'number') return;
+      const v = p.visited || [];
+      const allFam = DATA.family.every(n => v.includes(n));
+      let color = '#bbb';
+      if (allFam) color = '#4a6741';
+      else if (v.length > 0) color = '#c97b3f';
+
+      const marker = L.circleMarker([p.lat, p.lng], {
+        radius: 7,
+        fillColor: color,
+        color: '#fff',
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.9
+      }).addTo(markerLayer);
+
+      let popup = '<strong>' + escapeHtml(p.name) + '</strong><br><span style="color:#888;">' + escapeHtml(p.state || '') + '</span>';
+      popup += '<br>Visited by: ' + (v.length > 0 ? escapeHtml(v.join(', ')) : '<em>nobody yet</em>');
+      if (p.dates) popup += '<br>Date: ' + escapeHtml(p.dates);
+      marker.bindPopup(popup);
+      visibleBounds.push([p.lat, p.lng]);
+    });
+
+    if (visibleBounds.length > 0 && currentTab === 'utahStateParks') {
+      mapInstance.fitBounds(visibleBounds, { padding: [30, 30] });
+    } else {
+      // Default US-wide view for the others
+      mapInstance.setView([39.5, -100], currentTab === 'nationalMonuments' ? 4 : 4);
+    }
+    setTimeout(() => mapInstance.invalidateSize(), 100);
+  }
+
+  // Tab handling
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      currentTab = t.dataset.tab;
+      render();
+    });
+  });
+
+  document.querySelectorAll('.view-btn').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.view-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      currentView = b.dataset.view;
+      render();
+    });
+  });
+
+  document.getElementById('searchBox').addEventListener('input', renderList);
+  document.getElementById('visitedFilter').addEventListener('change', renderList);
+
+  // Admin actions
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const text = JSON.stringify(DATA, null, 2);
+    document.getElementById('exportText').value = text;
+    document.getElementById('exportModal').classList.add('open');
+  });
+  document.getElementById('exitAdminBtn').addEventListener('click', () => {
+    location.search = '';
+  });
+  document.getElementById('copyBtn').addEventListener('click', async () => {
+    const ta = document.getElementById('exportText');
+    ta.select();
+    try {
+      await navigator.clipboard.writeText(ta.value);
+      document.getElementById('copyBtn').textContent = 'Copied!';
+      setTimeout(() => document.getElementById('copyBtn').textContent = 'Copy to clipboard', 1500);
+    } catch (e) {
+      document.execCommand('copy');
+    }
+  });
+  document.getElementById('closeModalBtn').addEventListener('click', () => {
+    document.getElementById('exportModal').classList.remove('open');
+  });
+  document.getElementById('aboutLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    document.getElementById('aboutModal').classList.add('open');
+  });
+  document.getElementById('closeAboutBtn').addEventListener('click', () => {
+    document.getElementById('aboutModal').classList.remove('open');
+  });
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function escapeAttr(s) { return escapeHtml(s); }
+</script>
+</body>
+</html>
