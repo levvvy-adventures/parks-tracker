@@ -684,7 +684,8 @@ const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
   let mapPersonFilter = 'any';   // 'any' | 'all' | family member name
   let mapVisitedFilter = 'all';  // 'all' | 'visited' | 'notvisited'
   let listSearch = '';
-  let listVisitedFilter = 'all';
+  let listVisitedFilter = 'all';   // 'all' | 'visited' | 'notvisited'
+  let listPersonFilter = 'any';    // 'any' | 'all' | family member name
   let npsSubFilter = null;
   let addFormOpen = false;
   let addFormMessage = '';
@@ -987,22 +988,23 @@ const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
       document.getElementById('toolbar').innerHTML = '';
       return;
     }
-    if (currentTab === 'international') {
-      html += '<input type="text" id="searchBox" placeholder="Search countries..." value="' + escHtml(listSearch) + '" />';
-      html += '<select id="visitedFilter">';
-      html += '<option value="all"' + (listVisitedFilter==='all'?' selected':'') + '>All countries</option>';
-      html += '<option value="any"' + (listVisitedFilter==='any'?' selected':'') + '>Visited</option>';
-      html += '<option value="none"' + (listVisitedFilter==='none'?' selected':'') + '>Not visited</option>';
-      html += '</select>';
-      document.getElementById('toolbar').innerHTML = html;
-    } else {
-      html += '<input type="text" id="searchBox" placeholder="Search..." value="' + escHtml(listSearch) + '" />';
-      html += '<select id="visitedFilter">';
-      html += '<option value="all"' + (listVisitedFilter==='all'?' selected':'') + '>All places</option>';
-      html += '<option value="any"' + (listVisitedFilter==='any'?' selected':'') + '>Visited (any)</option>';
-      html += '<option value="all-fam"' + (listVisitedFilter==='all-fam'?' selected':'') + '>Visited by everyone</option>';
-      html += '<option value="none"' + (listVisitedFilter==='none'?' selected':'') + '>Not visited</option>';
-      html += '</select>';
+    const placeholder = currentTab === 'international' ? 'Search countries...' : 'Search...';
+    html += '<input type="text" id="searchBox" placeholder="' + placeholder + '" value="' + escHtml(listSearch) + '" />';
+    // Show: visited / not visited / all
+    html += '<select id="visitedFilter">';
+    html += '<option value="all"' + (listVisitedFilter==='all'?' selected':'') + '>Show all</option>';
+    html += '<option value="visited"' + (listVisitedFilter==='visited'?' selected':'') + '>Visited</option>';
+    html += '<option value="notvisited"' + (listVisitedFilter==='notvisited'?' selected':'') + '>Not visited</option>';
+    html += '</select>';
+    // By: anyone / all / family member
+    html += '<select id="personFilter">';
+    html += '<option value="any"' + (listPersonFilter==='any'?' selected':'') + '>by anyone</option>';
+    html += '<option value="all"' + (listPersonFilter==='all'?' selected':'') + '>by all of us</option>';
+    DATA.family.forEach(n => {
+      html += '<option value="' + escHtml(n) + '"' + (listPersonFilter===n?' selected':'') + '>by ' + escHtml(n) + '</option>';
+    });
+    html += '</select>';
+    if (currentTab !== 'international') {
       // Sub-category chips
       const cats = categoriesInGroup(currentTab).sort((a, b) =>
         (DATA.categories[a].label || a).localeCompare(DATA.categories[b].label || b));
@@ -1015,12 +1017,14 @@ const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
         });
         html += '</div>';
       }
-      document.getElementById('toolbar').innerHTML = html;
     }
+    document.getElementById('toolbar').innerHTML = html;
     const sb = document.getElementById('searchBox');
     if (sb) sb.addEventListener('input', e => { listSearch = e.target.value; renderListOnly(); });
     const vf = document.getElementById('visitedFilter');
     if (vf) vf.addEventListener('change', e => { listVisitedFilter = e.target.value; renderListOnly(); });
+    const pf = document.getElementById('personFilter');
+    if (pf) pf.addEventListener('change', e => { listPersonFilter = e.target.value; renderListOnly(); });
     document.querySelectorAll('.cat-chip').forEach(el => {
       el.addEventListener('click', () => {
         const v = el.dataset.cat;
@@ -1047,11 +1051,17 @@ const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
     const list = (DATA.places[catKey] || []).slice();
     return list.filter(p => {
       if (listSearch && !((p.name + ' ' + (p.state||'')).toLowerCase().includes(listSearch.toLowerCase()))) return false;
-      const v = visitedSet(p.trips);
-      if (listVisitedFilter === 'any' && v.size === 0) return false;
-      if (listVisitedFilter === 'none' && v.size > 0) return false;
-      if (listVisitedFilter === 'all-fam' && !DATA.family.every(n => v.has(n))) return false;
-      return true;
+      if (listVisitedFilter === 'all') return true;
+      const visited = visitedSet(p.trips);
+      let isVisited;
+      if (listPersonFilter === 'any') {
+        isVisited = visited.size > 0;
+      } else if (listPersonFilter === 'all') {
+        isVisited = visited.size > 0 && DATA.family.every(n => visited.has(n));
+      } else {
+        isVisited = visited.has(listPersonFilter);
+      }
+      return listVisitedFilter === 'visited' ? isVisited : !isVisited;
     });
   }
 
