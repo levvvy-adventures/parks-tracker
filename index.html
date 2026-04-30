@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="robots" content="noindex, nofollow" />
 <title>Price Family Travel Tracker</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
@@ -73,6 +74,63 @@
   .stat-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
   .stat-card .value { font-size: 20px; font-weight: 700; color: var(--accent); margin-top: 2px; }
   .stat-card .sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  /* Per-category progress breakdown */
+  .stats-breakdown {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+  .stats-breakdown h4 {
+    margin: 0 0 8px;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+  .cat-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    font-size: 13px;
+    border-bottom: 1px dashed var(--border);
+  }
+  .cat-row:last-child { border-bottom: none; }
+  .cat-row .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .cat-row .label { flex: 1; color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cat-row .count { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .cat-row .bar {
+    width: 90px; height: 6px;
+    background: #ece6d6;
+    border-radius: 3px;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .cat-row .bar-fill { height: 100%; transition: width 0.3s ease; }
+  .cat-row .pct {
+    font-weight: 600;
+    color: var(--accent);
+    min-width: 38px;
+    text-align: right;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .breakdown-empty-note {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed var(--border);
+    font-style: italic;
+  }
+  @media (max-width: 600px) {
+    .cat-row .bar { width: 60px; }
+    .cat-row .label { font-size: 12px; }
+  }
 
   .toolbar {
     display: flex;
@@ -200,6 +258,43 @@
   .topsite-row.checked .topsite-name { text-decoration: line-through; color: var(--muted); }
   .topsite-notes { display: none; }
   body.admin .topsite-notes { display: block; flex: 1; max-width: 200px; padding: 4px 6px; font-size: 12px; border: 1px solid var(--border); border-radius: 4px; background: var(--card); color: var(--ink); font-family: inherit; }
+
+  /* Password gate */
+  body.locked > header,
+  body.locked > .container,
+  body.locked > .lightbox,
+  body.locked > .modal-backdrop { display: none !important; }
+  body.locked { background: var(--accent); }
+  #passwordScreen {
+    display: none;
+    position: fixed; inset: 0;
+    background: var(--accent);
+    color: #fff;
+    flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 100000;
+    padding: 20px;
+    text-align: center;
+  }
+  body.locked #passwordScreen { display: flex; }
+  #passwordScreen h1 { margin: 0 0 6px; font-size: 28px; font-weight: 700; }
+  #passwordScreen p { margin: 0 0 18px; opacity: 0.92; font-size: 15px; max-width: 380px; }
+  #passwordScreen .pw-form { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  #passwordScreen input {
+    font-size: 16px; padding: 12px 14px;
+    border: none; border-radius: 8px;
+    width: 280px; max-width: 90vw;
+    color: var(--ink); background: #fff;
+  }
+  #passwordScreen button {
+    background: var(--warm); color: #fff; border: none;
+    padding: 12px 28px; border-radius: 8px;
+    font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  #passwordError {
+    color: #ffd1d1; margin-top: 12px;
+    display: none; font-size: 14px;
+  }
 
   /* Add new place UI */
   .add-place-section {
@@ -422,7 +517,65 @@
   }
 </style>
 </head>
-<body>
+<body class="locked">
+
+<div id="passwordScreen">
+  <h1>Price Family Travel Tracker</h1>
+  <p>This is a private family site. Please enter the family password.</p>
+  <div class="pw-form">
+    <input type="password" id="passwordInput" autocomplete="current-password" autofocus />
+    <button id="passwordSubmit">Enter</button>
+  </div>
+  <p id="passwordError">Incorrect password.</p>
+</div>
+
+<script>
+/* ============================================================
+   FAMILY PASSWORD GATE
+   Change SITE_PASSWORD below to whatever you want as your family password.
+   This blocks casual viewers but is NOT cryptographic security: anyone who
+   reads this file's source could see the password. For a family tracker,
+   it keeps strangers out and that's the goal.
+   ============================================================ */
+const SITE_PASSWORD = "adventure2019";
+const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
+
+(function authBootstrap(){
+  // Already authenticated on this device? Skip the password screen.
+  if (localStorage.getItem(PARKS_AUTH_KEY) === SITE_PASSWORD) {
+    document.body.classList.remove('locked');
+  }
+
+  function init() {
+    const submit = document.getElementById('passwordSubmit');
+    const input = document.getElementById('passwordInput');
+    const err = document.getElementById('passwordError');
+    if (!submit || !input) return;
+    function tryPassword() {
+      if (input.value === SITE_PASSWORD) {
+        localStorage.setItem(PARKS_AUTH_KEY, SITE_PASSWORD);
+        document.body.classList.remove('locked');
+        if (err) err.style.display = 'none';
+        if (typeof window._initParksApp === 'function') window._initParksApp();
+      } else {
+        if (err) err.style.display = 'block';
+        input.value = '';
+        input.focus();
+      }
+    }
+    submit.addEventListener('click', tryPassword);
+    input.addEventListener('keydown', function(e){
+      if (e.key === 'Enter') { e.preventDefault(); tryPassword(); }
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>
+
 <header>
   <h1>Price Family Travel Tracker</h1>
   <p>National Parks, State Parks, and Countries Visited</p>
@@ -431,6 +584,7 @@
 <div class="container">
   <div class="tabs" id="tabs"></div>
   <div id="stats" class="stats"></div>
+  <div id="statsBreakdown"></div>
   <div id="toolbar" class="toolbar"></div>
   <div id="content"></div>
 
@@ -486,17 +640,24 @@
   const isAdmin = new URLSearchParams(location.search).get('admin') === '1';
   if (isAdmin) document.body.classList.add('admin');
 
-  fetch('data.json?t=' + Date.now())
-    .then(r => r.json())
-    .then(d => { DATA = migrate(d); initMapFilters(); render(); })
-    .catch(err => {
-      document.querySelector('.container').innerHTML =
-        '<div style="background:#fff3cd;padding:16px;border-radius:8px;border:1px solid #ffeaa7;">' +
-        '<strong>Could not load data.json.</strong><br>' +
-        'If you are previewing this file locally, browsers block local file loads. ' +
-        'Either run <code>python3 -m http.server</code> in this folder, or publish to GitHub Pages.<br>' +
-        '<small>' + err.message + '</small></div>';
-    });
+  // Data fetch is deferred until the family password gate unlocks the site.
+  function _doFetch() {
+    fetch('data.json?t=' + Date.now())
+      .then(r => r.json())
+      .then(d => { DATA = migrate(d); initMapFilters(); render(); })
+      .catch(err => {
+        document.querySelector('.container').innerHTML =
+          '<div style="background:#fff3cd;padding:16px;border-radius:8px;border:1px solid #ffeaa7;">' +
+          '<strong>Could not load data.json.</strong><br>' +
+          'If you are previewing this file locally, browsers block local file loads. ' +
+          'Either run <code>python3 -m http.server</code> in this folder, or publish to GitHub Pages.<br>' +
+          '<small>' + err.message + '</small></div>';
+      });
+  }
+  window._initParksApp = _doFetch;
+  if (!document.body.classList.contains('locked')) {
+    _doFetch();
+  }
 
   // ----- Schema migration -----
   function migrate(data) {
@@ -656,7 +817,11 @@
   }
 
   function renderStats() {
-    if (currentTab === 'map') { document.getElementById('stats').innerHTML = ''; return; }
+    if (currentTab === 'map') {
+      document.getElementById('stats').innerHTML = '';
+      document.getElementById('statsBreakdown').innerHTML = '';
+      return;
+    }
     const cats = categoriesInGroup(currentTab);
     let total = 0, anyVisited = 0, allFam = 0;
     const perPerson = {};
@@ -676,6 +841,47 @@
     html += statCard('Visited by all', allFam, total ? Math.round(allFam/total*100)+'%' : '');
     DATA.family.forEach(n => html += statCard(n, perPerson[n], total ? Math.round(perPerson[n]/total*100)+'%' : ''));
     document.getElementById('stats').innerHTML = html;
+
+    // Per-category progress breakdown
+    document.getElementById('statsBreakdown').innerHTML = renderCategoryBreakdown(cats);
+  }
+
+  function renderCategoryBreakdown(cats) {
+    if (!cats || cats.length <= 1) return '';
+    const rows = cats.map(catKey => {
+      const meta = DATA.categories[catKey];
+      const places = DATA.places[catKey] || [];
+      const total = places.length;
+      const visited = places.filter(p => visitedSet(p.trips).size > 0).length;
+      const allFam = places.filter(p => {
+        const v = visitedSet(p.trips);
+        return v.size > 0 && DATA.family.every(n => v.has(n));
+      }).length;
+      return { catKey, meta, total, visited, allFam, pct: total ? visited / total : 0 };
+    }).filter(r => r.total > 0);
+    // Sort by visited count desc, then percentage desc, then label
+    rows.sort((a, b) => b.visited - a.visited || b.pct - a.pct || a.meta.label.localeCompare(b.meta.label));
+    const withProgress = rows.filter(r => r.visited > 0);
+    const withoutProgress = rows.filter(r => r.visited === 0);
+    if (rows.length === 0) return '';
+    let html = '<div class="stats-breakdown">';
+    html += '<h4>Progress by type</h4>';
+    rows.forEach(r => {
+      const pct = Math.round(r.pct * 100);
+      const allFamNote = r.allFam > 0 ? ' (' + r.allFam + ' by all)' : '';
+      html += '<div class="cat-row">';
+      html += '<span class="dot" style="background:' + r.meta.color + ';"></span>';
+      html += '<span class="label" title="' + escHtml(r.meta.label) + '">' + escHtml(r.meta.label) + '</span>';
+      html += '<span class="count">' + r.visited + ' / ' + r.total + escHtml(allFamNote) + '</span>';
+      html += '<span class="bar"><span class="bar-fill" style="width:' + pct + '%;background:' + r.meta.color + ';"></span></span>';
+      html += '<span class="pct">' + pct + '%</span>';
+      html += '</div>';
+    });
+    if (withProgress.length === 0 && withoutProgress.length > 0) {
+      html += '<div class="breakdown-empty-note">No visits logged in any category yet.</div>';
+    }
+    html += '</div>';
+    return html;
   }
   function statCard(label, value, sub) {
     return '<div class="stat-card"><div class="label">' + escHtml(label) + '</div><div class="value">' + value + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
