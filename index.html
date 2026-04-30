@@ -83,13 +83,38 @@
     padding: 12px 14px;
     margin-bottom: 14px;
   }
-  .stats-breakdown h4 {
+  .stats-breakdown .header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
     margin: 0 0 8px;
+  }
+  .stats-breakdown h4 {
+    margin: 0;
     font-size: 11px;
     color: var(--muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     font-weight: 600;
+  }
+  .breakdown-filter {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .breakdown-filter select {
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    background: var(--card);
+    color: var(--ink);
+    font-family: inherit;
+    cursor: pointer;
   }
   .cat-row {
     display: flex;
@@ -458,6 +483,31 @@
   .map-filter-panel label { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; margin: 3px 8px 3px 0; cursor: pointer; }
   .map-filter-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
   .map-filter-actions button { font-size: 12px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--card); cursor: pointer; }
+  .map-filter-controls {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 8px 0 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .map-filter-controls label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .map-filter-controls select {
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12px;
+    background: var(--card);
+    color: var(--ink);
+    font-family: inherit;
+    cursor: pointer;
+  }
 
   .leaflet-popup-content { margin: 10px 12px; min-width: 240px; max-width: 320px; }
   .popup-name { font-size: 15px; font-weight: 600; margin-bottom: 2px; color: var(--ink); }
@@ -537,7 +587,7 @@
    reads this file's source could see the password. For a family tracker,
    it keeps strangers out and that's the goal.
    ============================================================ */
-const SITE_PASSWORD = "adventure2019";
+const SITE_PASSWORD = "CHANGE_THIS_PASSWORD";
 const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
 
 (function authBootstrap(){
@@ -631,12 +681,15 @@ const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
   let currentView = 'list';
   let mapInstance = null, clusterLayer = null;
   let mapCategoryFilters = {};
+  let mapPersonFilter = 'any';   // 'any' | 'all' | family member name
+  let mapVisitedFilter = 'all';  // 'all' | 'visited' | 'notvisited'
   let listSearch = '';
   let listVisitedFilter = 'all';
   let npsSubFilter = null;
   let addFormOpen = false;
   let addFormMessage = '';
   let addFormMessageType = '';
+  let breakdownFilter = 'any'; // 'any' | 'all' | family member name
   const isAdmin = new URLSearchParams(location.search).get('admin') === '1';
   if (isAdmin) document.body.classList.add('admin');
 
@@ -844,6 +897,21 @@ const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
 
     // Per-category progress breakdown
     document.getElementById('statsBreakdown').innerHTML = renderCategoryBreakdown(cats);
+    bindBreakdownFilter();
+  }
+
+  function countVisitedForFilter(places, filter) {
+    if (filter === 'any') {
+      return places.filter(p => visitedSet(p.trips).size > 0).length;
+    }
+    if (filter === 'all') {
+      return places.filter(p => {
+        const v = visitedSet(p.trips);
+        return v.size > 0 && DATA.family.every(n => v.has(n));
+      }).length;
+    }
+    // Specific family member name
+    return places.filter(p => visitedSet(p.trips).has(filter)).length;
   }
 
   function renderCategoryBreakdown(cats) {
@@ -852,36 +920,57 @@ const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
       const meta = DATA.categories[catKey];
       const places = DATA.places[catKey] || [];
       const total = places.length;
-      const visited = places.filter(p => visitedSet(p.trips).size > 0).length;
-      const allFam = places.filter(p => {
-        const v = visitedSet(p.trips);
-        return v.size > 0 && DATA.family.every(n => v.has(n));
-      }).length;
-      return { catKey, meta, total, visited, allFam, pct: total ? visited / total : 0 };
+      const visited = countVisitedForFilter(places, breakdownFilter);
+      return { catKey, meta, total, visited, pct: total ? visited / total : 0 };
     }).filter(r => r.total > 0);
     // Sort by visited count desc, then percentage desc, then label
     rows.sort((a, b) => b.visited - a.visited || b.pct - a.pct || a.meta.label.localeCompare(b.meta.label));
-    const withProgress = rows.filter(r => r.visited > 0);
-    const withoutProgress = rows.filter(r => r.visited === 0);
     if (rows.length === 0) return '';
+
     let html = '<div class="stats-breakdown">';
+    html += '<div class="header-row">';
     html += '<h4>Progress by type</h4>';
+    html += '<div class="breakdown-filter">';
+    html += '<span>Show progress for:</span>';
+    html += '<select id="breakdownPersonSelect">';
+    html += '<option value="any"' + (breakdownFilter === 'any' ? ' selected' : '') + '>Anyone</option>';
+    html += '<option value="all"' + (breakdownFilter === 'all' ? ' selected' : '') + '>All ' + DATA.family.length + ' of us</option>';
+    DATA.family.forEach(n => {
+      html += '<option value="' + escHtml(n) + '"' + (breakdownFilter === n ? ' selected' : '') + '>' + escHtml(n) + '</option>';
+    });
+    html += '</select>';
+    html += '</div>';
+    html += '</div>';
+
     rows.forEach(r => {
       const pct = Math.round(r.pct * 100);
-      const allFamNote = r.allFam > 0 ? ' (' + r.allFam + ' by all)' : '';
       html += '<div class="cat-row">';
       html += '<span class="dot" style="background:' + r.meta.color + ';"></span>';
       html += '<span class="label" title="' + escHtml(r.meta.label) + '">' + escHtml(r.meta.label) + '</span>';
-      html += '<span class="count">' + r.visited + ' / ' + r.total + escHtml(allFamNote) + '</span>';
+      html += '<span class="count">' + r.visited + ' / ' + r.total + '</span>';
       html += '<span class="bar"><span class="bar-fill" style="width:' + pct + '%;background:' + r.meta.color + ';"></span></span>';
       html += '<span class="pct">' + pct + '%</span>';
       html += '</div>';
     });
-    if (withProgress.length === 0 && withoutProgress.length > 0) {
-      html += '<div class="breakdown-empty-note">No visits logged in any category yet.</div>';
+    if (rows.every(r => r.visited === 0)) {
+      const label = breakdownFilter === 'any' ? 'No visits logged yet' :
+                    breakdownFilter === 'all' ? 'No place yet visited by everyone' :
+                    'No visits logged for ' + breakdownFilter + ' yet';
+      html += '<div class="breakdown-empty-note">' + escHtml(label) + '.</div>';
     }
     html += '</div>';
     return html;
+  }
+
+  function bindBreakdownFilter() {
+    const sel = document.getElementById('breakdownPersonSelect');
+    if (!sel) return;
+    sel.addEventListener('change', (e) => {
+      breakdownFilter = e.target.value;
+      const cats = categoriesInGroup(currentTab);
+      document.getElementById('statsBreakdown').innerHTML = renderCategoryBreakdown(cats);
+      bindBreakdownFilter();
+    });
   }
   function statCard(label, value, sub) {
     return '<div class="stat-card"><div class="label">' + escHtml(label) + '</div><div class="value">' + value + '</div>' + (sub ? '<div class="sub">' + sub + '</div>' : '') + '</div>';
@@ -1347,6 +1436,21 @@ const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
     const groups = DATA.groupOrder || [];
     let html = '';
     html += '<div class="map-filter-actions"><button id="filterAllOn">Show all</button><button id="filterAllOff">Hide all</button><button id="filterDefault">Default</button></div>';
+    // Person + visited-status filters
+    html += '<div class="map-filter-controls">';
+    html += '<label>Show: <select id="mapVisitedSelect">';
+    html += '<option value="all"' + (mapVisitedFilter === 'all' ? ' selected' : '') + '>All locations</option>';
+    html += '<option value="visited"' + (mapVisitedFilter === 'visited' ? ' selected' : '') + '>Visited</option>';
+    html += '<option value="notvisited"' + (mapVisitedFilter === 'notvisited' ? ' selected' : '') + '>Not visited</option>';
+    html += '</select></label>';
+    html += '<label>By: <select id="mapPersonSelect">';
+    html += '<option value="any"' + (mapPersonFilter === 'any' ? ' selected' : '') + '>Anyone</option>';
+    html += '<option value="all"' + (mapPersonFilter === 'all' ? ' selected' : '') + '>All ' + DATA.family.length + ' of us</option>';
+    DATA.family.forEach(n => {
+      html += '<option value="' + escHtml(n) + '"' + (mapPersonFilter === n ? ' selected' : '') + '>' + escHtml(n) + '</option>';
+    });
+    html += '</select></label>';
+    html += '</div>';
     groups.forEach(g => {
       const cats = categoriesInGroup(g).sort((a, b) =>
         (DATA.categories[a].label || a).localeCompare(DATA.categories[b].label || b));
@@ -1378,6 +1482,34 @@ const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
       Object.keys(DATA.categories).forEach(k => mapCategoryFilters[k] = !!DATA.categories[k].defaultVisible);
       renderMapFilterPanel(); refreshMapMarkers();
     });
+    const visitedSel = document.getElementById('mapVisitedSelect');
+    if (visitedSel) {
+      visitedSel.addEventListener('change', (e) => {
+        mapVisitedFilter = e.target.value;
+        refreshMapMarkers();
+      });
+    }
+    const personSel = document.getElementById('mapPersonSelect');
+    if (personSel) {
+      personSel.addEventListener('change', (e) => {
+        mapPersonFilter = e.target.value;
+        refreshMapMarkers();
+      });
+    }
+  }
+
+  function placePassesPersonFilter(place) {
+    if (mapVisitedFilter === 'all') return true;
+    const visited = visitedSet(place.trips);
+    let isVisited;
+    if (mapPersonFilter === 'any') {
+      isVisited = visited.size > 0;
+    } else if (mapPersonFilter === 'all') {
+      isVisited = visited.size > 0 && DATA.family.every(n => visited.has(n));
+    } else {
+      isVisited = visited.has(mapPersonFilter);
+    }
+    return mapVisitedFilter === 'visited' ? isVisited : !isVisited;
   }
 
   function setupMap() {
@@ -1398,6 +1530,7 @@ const PARKS_AUTH_KEY = "parksFamilyAuth_v1";
       const meta = DATA.categories[catKey];
       (DATA.places[catKey] || []).forEach(place => {
         if (typeof place.lat !== 'number' || typeof place.lng !== 'number') return;
+        if (!placePassesPersonFilter(place)) return;
         const marker = L.circleMarker([place.lat, place.lng], {
           radius: 7,
           fillColor: meta.color,
